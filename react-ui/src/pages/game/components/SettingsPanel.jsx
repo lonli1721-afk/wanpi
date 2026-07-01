@@ -40,7 +40,7 @@ export default function SettingsPanel({
           <span style={{ fontSize: 10, color: '#f97316', fontWeight: 700, background: 'rgba(249,115,22,0.12)', padding: '2px 6px', borderRadius: 4 }}>当前使用：{resolvedApiGroupLabel}</span>
         </div>
         <p style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 10, lineHeight: 1.6 }}>
-          默认会根据账号所属部门/团队自动选择分组；如果管理员共用一个账号，可以在这里手动切换发一、发二、发三、市场发展部或发一混变组。
+          默认会根据账号所属部门/团队自动选择分组；如果管理员共用一个账号，可以在这里手动切换发一混变组、发一项目一部、发一项目二部、发二直投组、发二微信组、发二TT组、发二研发组。
         </p>
         <div style={{ display: 'flex', gap: 8 }}>
           <select

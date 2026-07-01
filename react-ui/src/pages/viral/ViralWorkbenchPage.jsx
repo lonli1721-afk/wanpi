@@ -48,9 +48,7 @@ const rewriteTargetOptions = [
   { value: 'video_prompt', label: '视频提示词' },
 ]
 const MAX_ANALYSIS_VIDEO_COUNT = 6
-const hideTemporarilyUnavailablePromptModels = (models = []) => (
-  models.filter(model => model.provider !== 'openai' && !String(model.id || '').toLowerCase().startsWith('gpt'))
-)
+const hideTemporarilyUnavailablePromptModels = (models = []) => models.filter(model => model?.provider !== 'openai')
 const FALLBACK_MODELS = [
   { id: 'doubao-seed-2-0-pro-260215', name: '火山 Doubao Seed 2.0 Pro', provider: 'ark' },
   { id: 'gemini-3.5-flash', name: 'Gemini 3.5 Flash（实验）', provider: 'gemini' },

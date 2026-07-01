@@ -9,6 +9,7 @@ import database as db
 import deps
 from image_tools_service import (
     DeriveRequest,
+    GenerateRolesRequest,
     GenerateNineRequest,
     ImageToolTaskRequest,
     MultimodalAnalysisRequest,
@@ -33,6 +34,7 @@ from image_tools_service import (
     polish_generation_prompt,
     prepare_derive_request,
     prepare_generate_nine_request,
+    prepare_generate_roles_request,
     prepare_reverse_request,
     prepare_split_grid_request,
     prepare_watermark_request,
@@ -48,6 +50,20 @@ logger = logging.getLogger("image-tools")
 
 
 router = APIRouter()
+
+
+@router.get("/permissions")
+async def image_tool_permissions(request: Request):
+    user = getattr(request.state, "user", None) or deps.get_current_user()
+    role = (user or {}).get("role", "")
+    username = (user or {}).get("username", "")
+    return {
+        "enabled": True,
+        "can_use": True,
+        "is_admin": role == "admin",
+        "role": role,
+        "username": username,
+    }
 
 
 async def _record_image_tool_event(

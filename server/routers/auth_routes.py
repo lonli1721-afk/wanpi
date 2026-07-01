@@ -142,8 +142,26 @@ SYNC_SETTING_KEYS = [
     "indextts_base_url", "nanobanana_api_key", "nanobanana_base_url", "api_proxy_url",
     "comfyui_base_url",
 ]
-for _group in ("fa1", "fa1_hunbian", "fa2", "fa3", "market"):
-    SYNC_SETTING_KEYS.append(f"group_api_{_group}_ark_api_key")
+GROUP_SYNC_SETTING_SUFFIXES = [
+    "ark_api_key", "jimeng_api_key",
+    "gemini_api_key", "gemini_api_keys",
+    "api_proxy_url",
+    "openai_api_key", "openai_base_url",
+    "qwen_api_key",
+    "dashscope_api_key", "game_dashscope_api_key",
+    "nanobanana_api_key", "nanobanana_pro_api_key", "nanobanana_base_url",
+    "vidu_api_key", "hailuo_api_key", "fal_api_key",
+    "hunyuan_secret_id", "hunyuan_secret_key",
+    "fish_audio_api_key", "volcengine_tts_key",
+    "cosyvoice_base_url", "indextts_base_url",
+]
+for _group in (
+    "fa1", "fa1_hunbian", "fa1_project1", "fa1_project2", "fa1_project3", "fa1_creative", "fa1_baoliang",
+    "fa2", "fa2_zhitou", "fa2_wechat", "fa2_tt", "fa2_research", "fa2_unassigned",
+    "fa3", "fa3_baoliang", "market", "market_tt", "hr_admin_ssc", "unassigned_zhitou", "unassigned",
+):
+    for _suffix in GROUP_SYNC_SETTING_SUFFIXES:
+        SYNC_SETTING_KEYS.append(f"group_api_{_group}_{_suffix}")
 
 
 async def _sync_settings_from_cloud(cloud_api_url: str, cloud_token: str, cloud_url: str):
@@ -777,89 +795,6 @@ def _usage_for_user(user: dict, days: int = 7, date_keys: Optional[list[str]] = 
     return row
 
 
-_KNOWN_TEAM_DEPARTMENTS = {
-    "微信组": ("发行事业一部", "微信项目组"),
-    "微信项目组": ("发行事业一部", "微信项目组"),
-    "微信项目组-素材组": ("发行事业一部", "微信项目组-素材组"),
-    "微信项目组-投放一组": ("发行事业一部", "微信项目组-投放一组"),
-    "微信项目组-投放二组": ("发行事业一部", "微信项目组-投放二组"),
-    "微信项目组-运营组": ("发行事业一部", "微信项目组-运营组"),
-    "微信平面组": ("发行事业一部", "微信项目组-平面组"),
-    "直投组": ("发行事业一部", "直投组"),
-    "直接项目组": ("发行事业一部", "直接项目组"),
-    "直接项目部": ("发行事业一部", "直接项目部"),
-    "直接项目部-素材组": ("发行事业一部", "直接项目部-素材组"),
-    "直接项目部-投放组": ("发行事业一部", "直接项目部-投放组"),
-    "直接项目部-运营组": ("发行事业一部", "直接项目部-运营组"),
-    "投创组": ("发行事业一部", "投创组"),
-    "投创项目组": ("发行事业一部", "投创项目组"),
-    "创意部": ("发行事业一部", "创意部"),
-    "产品部": ("发行事业一部", "产品部"),
-    "运营部": ("发行事业一部", "运营部"),
-    "市场": ("市场发展部", "TT组"),
-    "市场组": ("市场发展部", "TT组"),
-    "TT组": ("市场发展部", "TT组"),
-    "发三爆量组": ("发行事业三部", "发三爆量组"),
-}
-
-_PERSON_USAGE_ORG = {
-    "蔡沛玲": ("发行事业二部", "微信平面组"),
-    "蔡少鸿": ("发行事业三部", "发三爆量组"),
-    "曾珺": ("市场发展部", "TT组"),
-    "柴梓铭": ("发行事业一部", "创意部"),
-    "陈舒": ("发行事业一部", "微信组"),
-    "陈小敏": ("发行事业三部", "发三爆量组"),
-    "陈鑫": ("发行事业一部", "创意部"),
-    "陈艺": ("发行事业一部", "创意部"),
-    "邓春梅": ("发行事业一部", "直投组"),
-    "邓雨佳": ("发行事业一部", "投创组"),
-    "高甜甜": ("发行事业二部", "直投组"),
-    "郭盈": ("发行事业一部", "微信组"),
-    "贺宏健": ("发行事业一部", "产品部"),
-    "贺启涛": ("发行事业一部", "微信组"),
-    "胡琪": ("发行事业一部", "微信组"),
-    "黄娟": ("发行事业一部", "直投组"),
-    "黄浪": ("发行事业一部", "直投组"),
-    "黄琳": ("发行事业二部", "微信平面组"),
-    "黄也": ("发行事业二部", "微信组"),
-    "黄弋芹": ("发行事业二部", "微信组"),
-    "江彩燕": ("发行事业二部", "大展宏图组"),
-    "蒋菁蕾": ("发行事业二部", "直投组"),
-    "蒋迎香": ("发行事业一部", "创意部"),
-    "李刘阳": ("发行事业二部", "大展宏图组"),
-    "李奚禾": ("发行事业二部", "大展宏图组"),
-    "梁鸿宇": ("发行事业三部", "发三爆量组"),
-    "刘法佳": ("发行事业一部", "微信组"),
-    "刘新贝": ("发行事业一部", "微信组"),
-    "刘宇星": ("发行事业二部", "微信组"),
-    "龙福": ("发行事业一部", "微信组"),
-    "罗健梅": ("发行事业一部", "直投组"),
-    "罗瑾瑜": ("发行事业一部", "投创组"),
-    "吕寒英": ("发行事业二部", "直投组"),
-    "孟忠诚": ("发行事业一部", "直投组"),
-    "粟玉": ("发行事业二部", "大展宏图组"),
-    "汤达宇": ("发行事业一部", "直投组"),
-    "汪俊沅": ("发行事业三部", "发三爆量组"),
-    "吴军超": ("发行事业二部", "直投组"),
-    "向宇婷": ("发行事业一部", "微信组"),
-    "肖汝欣": ("发行事业一部", "微信组"),
-    "徐杨": ("发行事业一部", "直投组"),
-    "薛科文": ("发行事业一部", "直投组"),
-    "杨杭": ("发行事业一部", "投创组"),
-    "杨嘉辉": ("发行事业二部", "直投组"),
-    "杨洁": ("市场发展部", "TT组"),
-    "杨楠": ("发行事业一部", "产品部"),
-    "杨一宁": ("发行事业一部", "投创组"),
-    "姚林希": ("发行事业一部", "直投组"),
-    "叶秋园": ("发行事业一部", "创意部"),
-    "易宇": ("发行事业二部", "直投组"),
-    "张海涛": ("发行事业一部", "直投组"),
-    "张宏智": ("发行事业一部", "混变项目组"),
-    "赵宝月": ("发行事业一部", "微信组"),
-    "周延青": ("发行事业二部", "微信平面组"),
-    "朱蕾": ("发行事业一部", "微信组"),
-}
-
 _KNOWN_DEPARTMENTS = (
     "总经办",
     "人力资源部",
@@ -875,14 +810,8 @@ _KNOWN_DEPARTMENTS = (
 
 
 def _usage_org_for_user(user: dict) -> tuple[str, str]:
-    candidates = [
-        (user.get("display_name") or "").strip(),
-        (user.get("username") or "").strip(),
-    ]
-    for name in candidates:
-        if name in _PERSON_USAGE_ORG:
-            return _PERSON_USAGE_ORG[name]
-    return _usage_department_and_team(user.get("team", ""))
+    team_value = (user.get("team") or "").strip()
+    return _usage_department_and_team(team_value)
 
 
 def _users_in_usage_department(users: list[dict], department: str) -> list[dict]:
@@ -895,12 +824,25 @@ def _users_in_usage_department(users: list[dict], department: str) -> list[dict]
     ]
 
 
+def _users_in_exact_usage_team(users: list[dict], team: str) -> list[dict]:
+    target_team = (team or "").strip()
+    return [
+        user for user in users
+        if (user.get("team") or "").strip() == target_team
+    ]
+
+
 def _usage_department_and_team(team: str) -> tuple[str, str]:
     value = (team or "").strip()
     if not value:
         return "未分部门", "未分团队"
-    if value in _KNOWN_TEAM_DEPARTMENTS:
-        return _KNOWN_TEAM_DEPARTMENTS[value]
+    for separator in ("-", "－", "—"):
+        if separator in value:
+            department, group = value.split(separator, 1)
+            department = department.strip()
+            group = group.strip()
+            if department and group:
+                return department, group
     for department in _KNOWN_DEPARTMENTS:
         if value == department:
             return department, "未分团队"
@@ -1127,25 +1069,25 @@ async def team_usage(
     full = await asyncio.to_thread(auth.get_user_full, user.get("sub", ""))
     if not full:
         raise HTTPException(401, "用户不存在")
+    current_team = (full.get("team") or "").strip()
     current_department, current_team_group = _usage_org_for_user(full)
     date_keys = _resolve_usage_date_keys(days, start_date=start_date, end_date=end_date)
-    scoped_team_group = (team_group or "").strip()
-    cache_key = ("department", current_department, tuple(date_keys), scoped_team_group)
+    cache_key = ("team", current_team, tuple(date_keys))
     cached = _get_usage_cache(cache_key, refresh)
     if cached is not None:
         return cached
     all_users = await asyncio.to_thread(auth.list_all_user_ids)
-    users = _users_in_usage_department(all_users, current_department) or [full]
+    users = _users_in_exact_usage_team(all_users, current_team) or [full]
     payload = await _usage_response_for_users_filtered(
         users,
         days,
         date_keys=date_keys,
         department=current_department,
-        team_group=scoped_team_group,
+        team_group=current_team_group,
     )
     payload["department"] = current_department
     payload["team"] = current_team_group
-    payload["scope"] = {"department": current_department, "team_group": current_team_group}
+    payload["scope"] = {"team": current_team, "department": current_department, "team_group": current_team_group}
     return _set_usage_cache(cache_key, payload)
 
 

@@ -46,50 +46,10 @@ class ImageToolProviderRegistry:
         return keys
 
     def _user_key(self, name: str) -> str:
-        candidates = [f"game_{name}", name]
-
-        for key in candidates:
-            val = db.get_user_setting(key, "")
-            if val:
-                return val
-
-        for key in candidates:
-            val = deps.settings_manager.get(key, "")
-            if val:
-                return val
-
-        return self._env_key(name)
+        return deps.get_group_api_key(name)
 
     def _user_key_pool(self, name: str) -> list[str]:
-        if name == "gemini_api_key":
-            candidates = ["game_gemini_api_keys", "game_gemini_api_key", "gemini_api_keys", "gemini_api_key"]
-        else:
-            candidates = [f"game_{name}s", f"game_{name}", f"{name}s", name]
-
-        from ai_service import split_api_keys
-
-        keys: list[str] = []
-        seen: set[str] = set()
-
-        for key_name in candidates:
-            val = db.get_user_setting(key_name, "")
-            for key in split_api_keys(val):
-                if key not in seen:
-                    seen.add(key)
-                    keys.append(key)
-
-        for key_name in candidates:
-            val = deps.settings_manager.get(key_name, "")
-            for key in split_api_keys(val):
-                if key not in seen:
-                    seen.add(key)
-                    keys.append(key)
-
-        for key in self._env_key_pool(name):
-            if key not in seen:
-                seen.add(key)
-                keys.append(key)
-        return keys
+        return deps.get_group_api_key_pool(name)
 
     def jimeng(self):
         key = self._user_key("ark_api_key")
@@ -97,7 +57,7 @@ class ImageToolProviderRegistry:
             from jimeng_service import JimengService
 
             return JimengService(api_key=key)
-        return deps.jimeng_service
+        raise RuntimeError(deps.missing_group_api_key_message("火山 ARK Key"))
 
     def gemini(self):
         keys = self._user_key_pool("gemini_api_key")
@@ -113,12 +73,12 @@ class ImageToolProviderRegistry:
                     svc = AIService(api_key=keys[0], api_keys=keys, proxy_base_url=gemini_proxy)
                     self._ai_service_cache[cache_key] = svc
                 return svc
-        return deps.ai_service
+        raise RuntimeError(deps.missing_group_api_key_message("Gemini Key"))
 
     def openai(self):
         key = self._user_key("openai_api_key")
         if not key:
-            return deps.openai_service
+            raise RuntimeError(deps.missing_group_api_key_message("OpenAI Key"))
 
         from openai_service import OpenAIService
 

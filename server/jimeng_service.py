@@ -507,7 +507,7 @@ class JimengService:
     _DURATION_LIMITS = {
         "seedance-2.0": (4, 15),
         "seedance-2.0-fast": (4, 10),
-        "seedance-1.5-pro": (4, 12),
+        "seedance-1.5-pro": (4, 10),
         "seedance-fast": (4, 5),
     }
 

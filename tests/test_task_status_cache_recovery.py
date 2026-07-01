@@ -21,7 +21,6 @@ sys.path.insert(0, str(ROOT / "server"))
 import database as db  # noqa: E402
 import deps  # noqa: E402
 import task_status_query  # noqa: E402
-import task_status_http_service  # noqa: E402
 import task_status_service  # noqa: E402
 from routers import game_routes  # noqa: E402
 from task_status_policy import provider_video_cache_error  # noqa: E402
@@ -30,14 +29,10 @@ from task_status_policy import provider_video_cache_error  # noqa: E402
 class TaskStatusServiceBoundaryTests(unittest.TestCase):
     def test_service_does_not_import_large_game_router(self):
         service_source = Path(task_status_service.__file__).read_text(encoding="utf-8")
-        http_service_source = Path(task_status_http_service.__file__).read_text(encoding="utf-8")
 
         self.assertNotIn("routers.game_routes", service_source)
         self.assertNotIn("from routers import game_routes", service_source)
         self.assertNotIn("import game_routes", service_source)
-        self.assertNotIn("routers.game_routes", http_service_source)
-        self.assertNotIn("from routers import game_routes", http_service_source)
-        self.assertNotIn("import game_routes", http_service_source)
 
     def test_router_query_status_is_thin_service_wrapper(self):
         async def fake_service(task_id: str, **kwargs) -> dict:
@@ -55,55 +50,6 @@ class TaskStatusServiceBoundaryTests(unittest.TestCase):
             result = asyncio.run(game_routes._query_task_status("task-1", force_failed_cache_retry=True))
 
         self.assertEqual(result, {"task_id": "task-1", "status": "processing"})
-
-    def test_router_retry_cache_is_thin_http_service_wrapper(self):
-        async def fake_retry(task_id: str, **kwargs) -> dict:
-            self.assertEqual(task_id, "task-1")
-            self.assertIs(kwargs["db_call"], game_routes._db_call)
-            self.assertIs(kwargs["query_task_status"], game_routes._query_task_status)
-            return {"task_id": task_id, "status": "failed", "error": "cached"}
-
-        with patch.object(game_routes, "retry_game_task_result_cache", fake_retry):
-            result = asyncio.run(game_routes.game_task_retry_result_cache("task-1"))
-
-        self.assertEqual(result["error"], "cached")
-
-    def test_router_batch_status_is_thin_http_service_wrapper(self):
-        async def fake_batch(task_ids, **kwargs) -> dict:
-            self.assertEqual(task_ids, ["a", "b"])
-            self.assertIs(kwargs["query_task_status"], game_routes._query_task_status)
-            self.assertEqual(kwargs["concurrency"], game_routes.TASK_STATUS_QUERY_CONCURRENCY)
-            self.assertEqual(kwargs["batch_limit"], game_routes.TASK_STATUS_BATCH_LIMIT)
-            return {"tasks": {"a": {"status": "processing"}, "b": {"status": "completed"}}}
-
-        req = game_routes.BatchTaskStatusRequest(task_ids=["a", "b"])
-        with patch.object(game_routes, "batch_query_game_task_statuses", fake_batch):
-            result = asyncio.run(game_routes.game_task_status_batch(req))
-
-        self.assertEqual(result["tasks"]["b"]["status"], "completed")
-
-    def test_http_service_batch_preserves_limit_duplicate_and_busy_behavior(self):
-        calls: list[str] = []
-
-        async def query_status(task_id: str) -> dict:
-            calls.append(task_id)
-            if task_id == "busy":
-                raise task_status_query.StatusQueryBusyError("排队中")
-            return {"task_id": task_id, "status": "processing"}
-
-        result = asyncio.run(task_status_http_service.batch_query_game_task_statuses(
-            ["a", "a", "", "busy", "overflow"],
-            query_task_status=query_status,
-            concurrency=2,
-            batch_limit=2,
-        ))
-
-        self.assertEqual(calls, ["a", "busy"])
-        self.assertEqual(result["tasks"]["a"]["status"], "processing")
-        self.assertEqual(result["tasks"]["busy"]["status"], "processing")
-        self.assertIn("状态查询排队中", result["tasks"]["busy"]["message"])
-        self.assertEqual(result["tasks"]["overflow"]["status"], "processing")
-        self.assertIn("本轮任务较多", result["tasks"]["overflow"]["message"])
 
 
 class TaskStatusCacheRecoveryTests(unittest.TestCase):

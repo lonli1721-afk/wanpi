@@ -2,10 +2,33 @@ import { useCallback } from 'react'
 import { api } from '../../services/api'
 import { FALLBACK_VIDEO_MODELS } from './gameVideoConstants'
 import { normalizeImageQualityForModel } from './gameVideoModelUtils'
+import { filterImageModelsForCurrentUser } from '../image-toolbox/imageModelAccess'
+import { FALLBACK_IMAGE_MODELS, mergeImageModelsWithFallback } from '../image-toolbox/imageModelFallbacks'
 import {
   getErrorMessage,
   logGamePageError,
 } from './gameVideoPageHelpers'
+
+function mergeVideoModels(remoteModels) {
+  const fallbackById = new Map(FALLBACK_VIDEO_MODELS.map(model => [model.id, model]))
+  const merged = []
+  const seen = new Set()
+
+  ;(Array.isArray(remoteModels) ? remoteModels : []).forEach((model) => {
+    if (!model?.id) return
+    const fallback = fallbackById.get(model.id)
+    merged.push(fallback ? { ...model, ...fallback } : model)
+    seen.add(model.id)
+  })
+
+  FALLBACK_VIDEO_MODELS.forEach((model) => {
+    if (!seen.has(model.id)) {
+      merged.push(model)
+    }
+  })
+
+  return merged
+}
 
 export function useWorkbenchBootstrap({
   genScenes,
@@ -30,7 +53,7 @@ export function useWorkbenchBootstrap({
     try {
       const data = await api.get('/api/game/video_models')
       const remoteModels = Array.isArray(data?.models) ? data.models : []
-      const list = remoteModels.length ? remoteModels : FALLBACK_VIDEO_MODELS
+      const list = mergeVideoModels(remoteModels)
       setModels(list)
       if (genScenes.length === 0) {
         const initial = makeInitialScenePair(list)
@@ -51,7 +74,7 @@ export function useWorkbenchBootstrap({
   const loadImageModels = useCallback(async () => {
     try {
       const data = await api.get('/api/game/image_models')
-      const list = Array.isArray(data?.models) ? data.models : []
+      const list = filterImageModelsForCurrentUser(mergeImageModelsWithFallback(data?.models || []))
       setImageModels(list)
       if (!list.length) return
       const pick = (prev) => {
@@ -93,6 +116,7 @@ export function useWorkbenchBootstrap({
       }
     } catch (e) {
       logGamePageError('loadImageModels', e)
+      setImageModels(FALLBACK_IMAGE_MODELS)
     }
   }, [
     loadedProjectRef,

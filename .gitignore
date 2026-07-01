@@ -8,8 +8,6 @@ src-tauri/target/
 server/__pycache__/
 server/*.spec
 react-ui/dist/
-react-ui/dist.bak.*/
-react-ui/dist.bak-*/
 server/static/
 
 # Sidecar binaries
@@ -18,26 +16,13 @@ src-tauri/binaries/
 # Database & user data
 .local-data/
 *.db
-*.sqlite
-*.sqlite3
 server/uploads/
 server/cache/
-server/files/
-server/media/
-game-video-data/
-uploads/
-files/
-cache/
-media/
 
 # Environment & secrets
 .env
 .env.*
 !.env.example
-*.pem
-*.key
-id_rsa
-id_ed25519
 
 # OS files
 .DS_Store
@@ -46,25 +31,14 @@ Thumbs.db
 # Logs & archives
 *.log
 *.tar.gz
-*.zip
-*.bak
-*.bak.*
-*.bak-*
-.codex-backup-*/
-backup*/
-backups/
 
 # IDE
 .idea/
 .vscode/
-.cursor/
 
 # Python
 *.pyc
 __pycache__/
-.pytest_cache/
-.ruff_cache/
 
 # Claude Code agent metadata (worktrees, plans, session state)
 .claude/
-.codex/

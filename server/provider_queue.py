@@ -48,7 +48,7 @@ def _provider_limit(provider_key: str) -> int:
         "ark": 3,
         "dashscope": 2,
         "vidu": 2,
-        "openai": 1,
+        "openai": 3,
         "gemini": 3,
         "default": 3,
     }

@@ -120,7 +120,7 @@ export function logGamePageError(action, error) {
 export function makeScene(idx, models) {
   return {
     id: uid(), idx, prompt: '', description: '',
-    aiModel: 'gemini-3.1-pro-preview',
+    aiModel: 'doubao-seed-2-0-pro-260215',
     videoMode: 'generate',
     charImages: [], sceneImages: [],
     imageGenHistory: [],
@@ -246,7 +246,7 @@ export function serializeScenes(list) {
       idx: scene.idx,
       prompt: scene.prompt,
       description: scene.description || '',
-      aiModel: scene.aiModel || 'gemini-3.1-pro-preview',
+      aiModel: scene.aiModel || 'doubao-seed-2-0-pro-260215',
       videoMode: scene.videoMode === 'advanced_video' ? 'advanced_video' : scene.videoMode === 'reference_video' ? 'reference_video' : 'generate',
       charImages: normalizeMediaList(scene.charImages),
       sceneImages: normalizeMediaList(scene.sceneImages),

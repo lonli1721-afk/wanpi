@@ -184,6 +184,14 @@ app = FastAPI(
 app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=5)
 
 _cors_origins = [o.strip() for o in os.environ.get("CORS_ALLOWED_ORIGINS", "").split(",") if o.strip()]
+if os.environ.get("LOCAL_DEV_CORS", "1") == "1":
+    _cors_origins.extend([
+        "http://127.0.0.1:6180",
+        "http://localhost:6180",
+        "http://127.0.0.1:5173",
+        "http://localhost:5173",
+    ])
+    _cors_origins = list(dict.fromkeys(_cors_origins))
 if _cors_origins:
     app.add_middleware(
         CORSMiddleware,
@@ -403,6 +411,83 @@ async def report_client_error(body: ClientErrorReport, request: Request):
     return {"ok": True}
 
 
+async def content_chat_message(body: ContentChatRequest, request: Request):
+    user = getattr(request.state, "user", None) or {}
+    username = user.get("username", "") or user.get("sub", "")
+    key = deps.get_group_api_key("openai_api_key")
+    if not key:
+        raise deps.missing_group_api_key_http("OpenAI API Key")
+    proxy = deps.get_proxy_url()
+    base_url = deps.get_group_api_key("openai_base_url")
+    if proxy:
+        base_url = f"{proxy}/openai/v1"
+    elif not base_url:
+        base_url = "https://open-api.mincode.cn/v1"
+    svc = OpenAIService(api_key=key, base_url=base_url)
+    system_prompt = (
+        "你是游戏素材生产助手。请像原生对话窗口一样和用户连续协作，"
+        "不要强制把需求固定成单一出图或视频任务。优先帮助用户完成游戏素材的多图方案、"
+        "视频脚本、镜头拆解、投放文案、风格统一和迭代修改。输出要具体、可执行，"
+        "如果用户上传参考图，要结合参考图给出修改建议或生成方案。"
+    )
+    messages: list[dict] = [{"role": "system", "content": system_prompt}]
+
+    for item in body.messages[-20:]:
+        role = item.role if item.role in {"system", "user", "assistant"} else "user"
+        content = (item.content or "").strip()
+        if content:
+            messages.append({"role": role, "content": content[:12000]})
+
+    user_text = (body.message or "").strip()
+    images = [img for img in (body.images or []) if isinstance(img, str) and img.startswith("data:image/")]
+    if images:
+        content_parts: list[dict] = []
+        if user_text:
+            content_parts.append({"type": "text", "text": user_text})
+        else:
+            content_parts.append({"type": "text", "text": "请分析这些参考图，并继续完成素材内容生成。"})
+        for image_url in images[:8]:
+            content_parts.append({"type": "image_url", "image_url": {"url": image_url, "detail": "high"}})
+        messages.append({"role": "user", "content": content_parts})
+    elif user_text:
+        messages.append({"role": "user", "content": user_text})
+    else:
+        raise HTTPException(status_code=400, detail="请输入对话内容或上传参考图。")
+
+    try:
+        content = await svc.chat_messages(
+            messages,
+            model=body.model or "gpt-5.5",
+            max_tokens=max(1024, min(int(body.max_tokens or 8192), 24000)),
+            temperature=max(0.0, min(float(body.temperature or 0.7), 1.5)),
+        )
+        try:
+            await asyncio.to_thread(
+                db.create_game_operation_event,
+                project_id="",
+                operation="content_chat_message",
+                provider="openai",
+                model=body.model or "gpt-5.5",
+                status="completed",
+                error=f"user={username}" if username else "",
+            )
+        except Exception:
+            logger.debug("Failed to persist content chat event", exc_info=True)
+        return {
+            "id": str(uuid.uuid4()),
+            "role": "assistant",
+            "content": content,
+            "model": body.model or "gpt-5.5",
+            "created_at": int(time.time()),
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+async def content_chat_options():
+    return {"ok": True}
+
+
 @app.get("/api/settings")
 async def get_settings(request: Request):
     deps.require_admin(request)
@@ -417,6 +502,9 @@ async def update_setting(body: SettingsUpdate, request: Request):
     v = str(body.value) if body.value else ""
     hk_proxy = _get_proxy_url()
     if body.key == "api_proxy_url":
+        _init_services()
+        return {"success": True}
+    if body.key.startswith("group_api_"):
         _init_services()
         return {"success": True}
     if body.key in ("gemini_api_key", "gemini_api_keys", "game_gemini_api_key", "game_gemini_api_keys"):

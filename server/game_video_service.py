@@ -18,21 +18,18 @@ BASE_URL = "https://ark.cn-beijing.volces.com/api/v3"
 VIDEO_MODELS = {
     "seedance-1.5-pro":  "doubao-seedance-1-5-pro-251215",
     "seedance-2.0":      "doubao-seedance-2-0-260128",
-    "seedance-2.0-fast": "doubao-seedance-2-0-fast-260128",
     "seedance-fast":     "doubao-seedance-1-0-pro-fast-251015",
     "dream-actor":       "jimeng_dream_actor_m1_gen_video_cv",
 }
 
 _DURATION_LIMITS = {
     "seedance-2.0": (4, 15),
-    "seedance-2.0-fast": (4, 10),
-    "seedance-1.5-pro": (4, 12),
+    "seedance-1.5-pro": (4, 10),
     "seedance-fast": (4, 5),
 }
 
 _RESOLUTION_LIMITS = {
     "seedance-2.0": {"720p", "1080p"},
-    "seedance-2.0-fast": {"720p"},
     "seedance-1.5-pro": {"720p"},
     "seedance-fast": {"720p"},
 }
@@ -65,8 +62,6 @@ def _localize_seedance_error(code: str, msg: str) -> str:
     """将 Seedance / 火山引擎英文错误码翻译为中文。"""
     blob = f"{code} {msg}"
     blob_lower = blob.lower()
-    if "duration" in blob_lower and "not valid" in blob_lower:
-        return "Seedance 1.5 Pro 生成时长参数不合法：请使用 4-12 秒，建议先选 4 秒或 5 秒后重试。"
     if "duration" in blob_lower and "15.2" in blob:
         return "参考视频时长过长。Seedance 当前仅支持 15.2 秒以内的参考视频，请先裁剪后重试。"
     for key, zh in _SEEDANCE_ERROR_ZH:
@@ -241,6 +236,7 @@ class GameJimengService:
         image_url: base64 data URL 或 HTTP URL
         video_url: base64 data URL 或 HTTP URL
         """
+        model = normalize_video_model_id(model)
         model_id = VIDEO_MODELS.get(model, VIDEO_MODELS["seedance-2.0"])
         min_dur, max_dur = _DURATION_LIMITS.get(model, (4, 15))
         clamped_dur = max(min_dur, min(duration, max_dur))
@@ -302,6 +298,7 @@ class GameJimengService:
         reference_images: list[str] | None = None,
         reference_video: str = "",
     ) -> dict:
+        model = normalize_video_model_id(model)
         model_id = VIDEO_MODELS.get(model, VIDEO_MODELS["seedance-2.0"])
         is_v2 = "seedance-2" in model
 
@@ -310,14 +307,13 @@ class GameJimengService:
         normalized_resolution = _normalize_resolution(model, resolution)
         ref_image_count = len(reference_images or [])
         ref_video_count = 1 if reference_video else 0
-        is_seedance_15 = model == "seedance-1.5-pro"
 
         content = [{
             "type": "text",
             "text": _seedance_prompt(
                 prompt,
                 has_first_frame=bool(image_url),
-                reference_image_count=0 if is_seedance_15 else ref_image_count,
+                reference_image_count=ref_image_count,
                 reference_video_count=ref_video_count,
             ),
         }]
@@ -342,20 +338,6 @@ class GameJimengService:
                     "video_url": {"url": reference_video},
                     "role": "reference_video",
                 })
-        elif is_seedance_15:
-            if image_url:
-                content.append({
-                    "type": "image_url",
-                    "image_url": {"url": image_url},
-                    "role": "first_frame",
-                })
-            last_img = (reference_images or [None])[0]
-            if last_img:
-                content.append({
-                    "type": "image_url",
-                    "image_url": {"url": last_img},
-                    "role": "last_frame",
-                })
         else:
             first_img = image_url or (reference_images[0] if reference_images else "")
             if first_img:
@@ -373,8 +355,6 @@ class GameJimengService:
             "resolution": normalized_resolution,
             "watermark": False,
         }
-        if is_seedance_15:
-            payload["generate_audio"] = False
 
         url = f"{BASE_URL}/contents/generations/tasks"
         logger.info("Game Seedance payload: %s", json.dumps(payload, ensure_ascii=False, default=str)[:2000])
@@ -407,6 +387,7 @@ class GameJimengService:
         - image_b64_urls: base64 data URL（图片可以用 base64）
         - video_urls: 可公网访问的参考视频 URL
         """
+        model = normalize_video_model_id(model)
         model_id = VIDEO_MODELS.get(model, VIDEO_MODELS["seedance-2.0"])
 
         min_dur, max_dur = _DURATION_LIMITS.get(model, (4, 10))

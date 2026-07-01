@@ -21,6 +21,7 @@ import {
   TASK_POLL_LIMIT,
   VIDEO_RESOLUTION_OPTIONS,
 } from './gameVideoConstants'
+import { FALLBACK_IMAGE_MODELS } from '../image-toolbox/imageModelFallbacks'
 import {
   cleanImageModelLabel,
   getImageQualityIds,
@@ -90,11 +91,11 @@ export default function GameVideoPage() {
     Array.isArray(cachedBootstrap.projects) ? cachedBootstrap.projects : []
   ))
   const [currentProject, setCurrentProject] = useState(null)
-  const [models, setModels] = useState(() => (
-    Array.isArray(cachedBootstrap.models) ? cachedBootstrap.models : []
-  ))
+  const [models, setModels] = useState([])
   const [imageModels, setImageModels] = useState(() => (
-    Array.isArray(cachedBootstrap.imageModels) ? cachedBootstrap.imageModels : []
+    Array.isArray(cachedBootstrap.imageModels) && cachedBootstrap.imageModels.length
+      ? cachedBootstrap.imageModels
+      : FALLBACK_IMAGE_MODELS
   ))
 
   const [genScenes, setGenScenes] = useState([])
@@ -1293,7 +1294,10 @@ export default function GameVideoPage() {
   const estimateCost = (scene) => {
     const m = models.find(m => m.id === scene.model)
     if (!m?.price_per_second) return null
-    const pricePerSecond = getVideoPricePerSecond(m, scene)
+    const pricePerSecond = getVideoPricePerSecond(m, {
+      ...scene,
+      apiUsageGroup: gameSettings.resolved_api_usage_group || gameSettings.game_api_usage_group || '',
+    })
     const outputSeconds = m.id === 'happyhorse-1.0-video-edit'
       ? Math.min(
         Number(m.max_duration || 15),

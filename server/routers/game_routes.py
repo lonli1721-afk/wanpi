@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import io
 import logging
 import uuid
 import json
@@ -10,12 +11,13 @@ import re
 import threading
 import time
 
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Request, Depends
 from pydantic import BaseModel, Field
 from typing import Optional
 
 import database as db
 import deps
+import auth
 from game_media_service import (
     collect_file_urls as _collect_file_urls,
     delete_local_files as _delete_local_files,
@@ -37,10 +39,38 @@ from task_record_service import (
 from task_status_service import query_game_task_status
 from task_status_http_service import batch_query_game_task_statuses, retry_game_task_result_cache
 from video_generation_validation import VideoGenerationValidationError, validate_generate_video_request
-from video_model_registry import get_video_model_spec, get_video_model_specs as _catalog_video_model_specs
+from video_model_registry import get_video_model_spec, get_video_model_specs as _catalog_video_model_specs, normalize_video_model_id
 
 logger = logging.getLogger("game")
-router = APIRouter()
+
+
+def _bind_request_context(request: Request) -> None:
+    user = getattr(request.state, "user", None)
+    if not isinstance(user, dict):
+        return
+    user = dict(user)
+    lookup = user.get("sub") or user.get("id") or user.get("username") or ""
+    full = auth.get_user_full(lookup) if lookup else None
+    if not full and user.get("username"):
+        full = auth.get_user_full(user.get("username"))
+    if full:
+        for key, value in full.items():
+            if value is not None:
+                user[key] = value
+        if full.get("id"):
+            user["sub"] = full["id"]
+    request.state.user = user
+    deps.set_current_user(user)
+    user_id = user.get("id") or user.get("sub") or ""
+    if not user_id:
+        return
+    user_db_path = getattr(request.state, "user_db_path", None) or auth.get_user_db_path(user_id)
+    user_files_dir = getattr(request.state, "user_files_dir", None) or auth.get_user_files_dir(user_id)
+    db.set_db_path(user_db_path)
+    deps.set_files_dir(user_files_dir)
+
+
+router = APIRouter(dependencies=[Depends(_bind_request_context)])
 
 FRAME_EXTRACTION_CONCURRENCY = max(1, int(os.environ.get("FRAME_EXTRACTION_CONCURRENCY", "2") or "2"))
 FRAME_EXTRACTION_TIMEOUT_SECONDS = max(5, int(os.environ.get("FRAME_EXTRACTION_TIMEOUT_SECONDS", "45") or "45"))
@@ -53,9 +83,35 @@ FAILED_RESULT_RECOVERY_RETRY_SECONDS = max(
     30,
     int(os.environ.get("GAME_FAILED_RESULT_RECOVERY_RETRY_SECONDS", "300") or "300"),
 )
+PROMPT_REFERENCE_IMAGE_MAX_BYTES = max(
+    1024 * 1024,
+    int(os.environ.get("PROMPT_REFERENCE_IMAGE_MAX_BYTES", str(6 * 1024 * 1024)) or str(6 * 1024 * 1024)),
+)
 _frame_extraction_semaphore = asyncio.Semaphore(FRAME_EXTRACTION_CONCURRENCY)
 _ai_service_cache: dict[tuple[str, tuple[str, ...]], object] = {}
 _ai_service_cache_lock = threading.RLock()
+OPENAI_IMAGE2_BETA_USERNAMES = {
+    "huangye",
+    "caipailing",
+    "caipeiling",
+    "zhouyanqing",
+    "huanglin",
+    "huanghuiyuan",
+    "liuxiaoxiao",
+    "liqingling",
+    "zhanghongzhi",
+}
+OPENAI_IMAGE2_BETA_DISPLAY_NAMES = {
+    "黄也",
+    "蔡沛玲",
+    "周延青",
+    "黄琳",
+    "黄慧缘",
+    "黄慧媛",
+    "刘潇潇",
+    "黎庆玲",
+    "张宏智",
+}
 
 PROMPT_CHINESE_OUTPUT_RULES = """
 语言硬性规则：
@@ -117,6 +173,42 @@ def _env_key(name: str) -> str:
     return ""
 
 
+def _current_request_user(request: Request | None = None) -> dict:
+    user = {}
+    if request is not None:
+        state_user = getattr(request.state, "user", None)
+        if isinstance(state_user, dict):
+            user.update(state_user)
+    if not user and hasattr(deps, "get_current_user"):
+        try:
+            user.update(deps.get_current_user() or {})
+        except Exception:
+            pass
+    user_id = user.get("sub") or user.get("id") or ""
+    if user_id and hasattr(auth, "get_user_full"):
+        try:
+            full = auth.get_user_full(user_id) or {}
+            user.update({k: v for k, v in full.items() if v not in (None, "")})
+        except Exception:
+            pass
+    return user
+
+
+def _can_use_openai_image2_beta(request: Request | None = None) -> bool:
+    user = _current_request_user(request)
+    role = str(user.get("role") or "").strip().lower()
+    if role == "admin":
+        return True
+    username = str(user.get("username") or "").strip().lower()
+    display_name = str(user.get("display_name") or "").strip()
+    return username in OPENAI_IMAGE2_BETA_USERNAMES or display_name in OPENAI_IMAGE2_BETA_DISPLAY_NAMES
+
+
+def _ensure_openai_image2_beta_access(request: Request | None = None) -> None:
+    if not _can_use_openai_image2_beta(request):
+        raise HTTPException(status_code=403, detail="GPT Image 2 当前处于成本内测，仅管理员和内测名单用户可使用。")
+
+
 def _env_key_pool(name: str) -> list[str]:
     if name == "gemini_api_key":
         candidates = ["GAME_GEMINI_API_KEYS", "GEMINI_API_KEYS", "GAME_GEMINI_API_KEY", "GEMINI_API_KEY"]
@@ -135,60 +227,24 @@ def _env_key_pool(name: str) -> list[str]:
 
 
 def _user_key(name: str) -> str:
-    """Read a game API key from user settings, local settings, or environment."""
-    candidates = [f"game_{name}", name]
-
-    group_value = deps.get_group_api_key(name)
-    if group_value:
-        return group_value
-
-    for key in candidates:
-        val = db.get_user_setting(key, "")
-        if val:
-            return val
-
-    for key in candidates:
-        val = deps.settings_manager.get(key, "")
-        if val:
-            return val
-
-    return _env_key(name)
+    """Read a game API key from the current user's department group only."""
+    return deps.get_group_api_key(name)
 
 
 def _user_key_pool(name: str) -> list[str]:
-    if name == "gemini_api_key":
-        candidates = ["game_gemini_api_keys", "game_gemini_api_key", "gemini_api_keys", "gemini_api_key"]
-    else:
-        candidates = [f"game_{name}s", f"game_{name}", f"{name}s", name]
+    return deps.get_group_api_key_pool(name)
 
-    from ai_service import split_api_keys
-    keys: list[str] = []
-    seen: set[str] = set()
 
-    for key in deps.get_group_api_key_pool(name):
-        if key not in seen:
-            seen.add(key)
-            keys.append(key)
+def _missing_group_api_key(name: str) -> HTTPException:
+    helper = getattr(deps, "missing_group_api_key_http", None)
+    if callable(helper):
+        return helper(name)
 
-    for key_name in candidates:
-        val = db.get_user_setting(key_name, "")
-        for key in split_api_keys(val):
-            if key not in seen:
-                seen.add(key)
-                keys.append(key)
+    message_helper = getattr(deps, "missing_group_api_key_message", None)
+    if callable(message_helper):
+        return HTTPException(status_code=400, detail=message_helper(name))
 
-    for key_name in candidates:
-        val = deps.settings_manager.get(key_name, "")
-        for key in split_api_keys(val):
-            if key not in seen:
-                seen.add(key)
-                keys.append(key)
-
-    for key in _env_key_pool(name):
-        if key not in seen:
-            seen.add(key)
-            keys.append(key)
-    return keys
+    return HTTPException(status_code=400, detail=f"{name} API Key 未配置，请先到设置里配置。")
 
 
 async def _resolve_seedance_video_reference(svc, url: str) -> str:
@@ -198,12 +254,13 @@ async def _resolve_seedance_video_reference(svc, url: str) -> str:
         return url
 
     public_url = deps.build_signed_public_file_url(url)
-    if public_url == url:
-        raise HTTPException(
-            400,
-            "Seedance 动作模仿需要模型方可访问的公网视频地址。本地测试服务器的上传文件不能被火山服务器读取，请上线测试，或为本地服务配置 PUBLIC_BASE_URL 后再试。",
-        )
-    return public_url
+    if public_url != url:
+        return public_url
+
+    raise HTTPException(
+        400,
+        "视频动作修复需要模型方可访问的公网视频地址。请检查 PUBLIC_BASE_URL 是否已配置，并确认该视频文件仍存在；如果仍失败，请重新上传视频后再试。",
+    )
 
 
 async def _validate_seedance_reference_video_duration(url: str, label: str = "参考视频") -> float | None:
@@ -260,7 +317,7 @@ def _jimeng():
     if k:
         from jimeng_service import JimengService
         return JimengService(api_key=k)
-    return deps.jimeng_service
+    raise _missing_group_api_key("火山 ARK Key")
 
 
 def _game_video_svc():
@@ -269,7 +326,7 @@ def _game_video_svc():
     if k:
         from game_video_service import GameJimengService
         return GameJimengService(api_key=k)
-    return deps.game_jimeng_service
+    raise _missing_group_api_key("火山 ARK Key")
 
 
 def _vidu():
@@ -278,7 +335,7 @@ def _vidu():
     if k:
         from vidu_service import ViduService
         return ViduService(api_key=k)
-    return deps.vidu_service
+    raise _missing_group_api_key("VIDU Key")
 
 
 def _happyhorse():
@@ -287,7 +344,7 @@ def _happyhorse():
     if k:
         from happyhorse_service import HappyHorseService
         return HappyHorseService(api_key=k)
-    return None
+    raise _missing_group_api_key("DashScope Key")
 
 
 def _ai():
@@ -304,14 +361,14 @@ def _ai():
                 svc = AIService(api_key=keys[0], api_keys=keys, proxy_base_url=gemini_proxy)
                 _ai_service_cache[cache_key] = svc
             return svc
-    return deps.ai_service
+    raise _missing_group_api_key("Gemini Key")
 
 
 def _openai():
     """Per-user OpenAI-compatible service with the same proxy/base-url rules as the global service."""
     k = _user_key("openai_api_key")
     if not k:
-        return deps.openai_service
+        raise _missing_group_api_key("OpenAI Key")
 
     from openai_service import OpenAIService
 
@@ -326,6 +383,18 @@ def _openai():
 
 def _is_ark_multimodal_model(model: str) -> bool:
     return (model or "").strip() == ARK_MULTIMODAL_MODEL_ID
+
+
+def _ensure_prompt_model_available(model: str) -> None:
+    selected = (model or "gemini-2.5-flash").strip()
+    if _is_ark_multimodal_model(selected):
+        if not _ark_api_key():
+            raise _missing_group_api_key("火山 ARK Key")
+        return
+    if deps.is_openai_model(selected):
+        _openai()
+        return
+    _ai()
 
 
 def _ark_api_key() -> str:
@@ -415,6 +484,54 @@ async def _read_reference_media(url: str, expected: str = "image") -> tuple[byte
     return media_bytes, mime, ext or "png"
 
 
+def _shrink_prompt_reference_image(image_bytes: bytes, mime: str) -> tuple[bytes, str]:
+    if len(image_bytes) <= PROMPT_REFERENCE_IMAGE_MAX_BYTES:
+        return image_bytes, mime
+    try:
+        from PIL import Image, ImageOps
+    except Exception:
+        logger.warning("Pillow is unavailable; cannot shrink prompt reference image (%d bytes)", len(image_bytes))
+        return image_bytes, mime
+
+    try:
+        with Image.open(io.BytesIO(image_bytes)) as image:
+            image = ImageOps.exif_transpose(image)
+            if image.mode not in ("RGB", "L"):
+                image = image.convert("RGB")
+            elif image.mode == "L":
+                image = image.convert("RGB")
+
+            max_side = max(image.size)
+            quality = 88
+            while True:
+                candidate = image.copy()
+                if max_side > 2048:
+                    candidate.thumbnail((2048, 2048), Image.Resampling.LANCZOS)
+
+                while quality >= 62:
+                    buf = io.BytesIO()
+                    candidate.save(buf, format="JPEG", quality=quality, optimize=True, progressive=True)
+                    data = buf.getvalue()
+                    if len(data) <= PROMPT_REFERENCE_IMAGE_MAX_BYTES:
+                        logger.info(
+                            "Shrank prompt reference image from %.2f MiB to %.2f MiB",
+                            len(image_bytes) / 1024 / 1024,
+                            len(data) / 1024 / 1024,
+                        )
+                        return data, "image/jpeg"
+                    quality -= 8
+
+                if max(candidate.size) <= 960:
+                    return data, "image/jpeg"
+                max_side = max(960, int(max(candidate.size) * 0.78))
+                image = candidate
+                image.thumbnail((max_side, max_side), Image.Resampling.LANCZOS)
+                quality = 82
+    except Exception as exc:
+        logger.warning("Failed to shrink prompt reference image: %s", exc)
+        return image_bytes, mime
+
+
 async def _collect_prompt_reference_media(
     character_refs: list[str],
     scene_refs: list[str],
@@ -426,6 +543,7 @@ async def _collect_prompt_reference_media(
         if not url:
             continue
         image_bytes, mime, _ = await _read_reference_media(url, "image")
+        image_bytes, mime = await asyncio.to_thread(_shrink_prompt_reference_image, image_bytes, mime)
         image_refs.append((image_bytes, mime))
 
     video_refs: list[tuple[bytes, str, str]] = []
@@ -457,9 +575,6 @@ async def _prompt_multimodal_chat(
             _ark_chat_completion(content=content, operation="prompt_multimodal_chat", max_completion_tokens=2048),
             timeout=timeout,
         )
-    svc = _ai()
-    if not svc:
-        svc = None
 
     async def _call_gemini(gemini_model: str) -> str:
         if not svc:
@@ -495,6 +610,10 @@ async def _prompt_multimodal_chat(
             "prompt_multimodal_chat",
             _call_openai_vision,
         )
+
+    svc = _ai()
+    if not svc:
+        svc = None
 
     if not svc:
         raise Exception("Gemini API key is not configured")
@@ -982,7 +1101,7 @@ async def _resolve_provider_image_reference(url: str, provider: str) -> str:
 
 
 @router.post("/generate_image")
-async def generate_asset_image(req: GenerateAssetImageRequest):
+async def generate_asset_image(req: GenerateAssetImageRequest, request: Request):
     """Generate a character/scene reference image from prompt."""
 
     async def _do():
@@ -1033,12 +1152,38 @@ async def generate_asset_image(req: GenerateAssetImageRequest):
                 "gemini_image",
                 "generate_image",
                 lambda: svc.generate_image(
-                    prompt=prompt, model=req.model,
+                    prompt=prompt, model=normalize_video_model_id(req.model),
                     width=image_width, height=image_height,
                     reference_images=ref_bytes_list if ref_bytes_list else None,
                 ),
             )
             result = await asyncio.to_thread(deps.save_gemini_image_result, result)
+        elif req.provider == "openai_image":
+            _ensure_openai_image2_beta_access(request)
+            svc = _openai()
+            if not svc:
+                raise Exception("OpenAI API key is not configured")
+            ref_images = []
+            for index, url in enumerate((req.reference_urls or [])[:4], start=1):
+                image_bytes, mime, ext = await _read_reference_media(url, "image")
+                ref_images.append((image_bytes, mime, f"reference_{index}.{ext or 'png'}"))
+            # Keep the legacy text-only guard from firing; refs are passed to the service below.
+            req.reference_urls = []
+            if req.reference_urls:
+                raise HTTPException(400, "OpenAI 图片生成当前先只支持文字生图，请先移除参考图后再试。")
+            size = f"{image_width}x{image_height}"
+            result = await _provider_call(
+                "openai_image",
+                "generate_image",
+                lambda: svc.generate_image(
+                    prompt=prompt,
+                    model=normalize_video_model_id(req.model),
+                    size=size,
+                    reference_images=ref_images if ref_images else None,
+                ),
+            )
+            if any(img.get("data") for img in result.get("images", [])):
+                result = await asyncio.to_thread(deps.save_gemini_image_result, result)
         else:
             raise Exception(f"不支持的图片服务商: {req.provider}")
 
@@ -1062,15 +1207,16 @@ async def generate_asset_image(req: GenerateAssetImageRequest):
 
 
 @router.get("/image_models")
-async def list_image_models():
-    """Return available image generation models."""
+async def list_image_models(request: Request):
+    """Return all supported image generation models for the UI."""
+    from jimeng_service import get_image_model_specs
+    from ai_service import GEMINI_IMAGE_MODELS
+    from openai_service import OPENAI_IMAGE_MODELS
+
     models = []
-    if _jimeng():
-        from jimeng_service import get_image_model_specs
-        models.extend(get_image_model_specs())
-    if _ai():
-        from ai_service import GEMINI_IMAGE_MODELS
-        models.extend(GEMINI_IMAGE_MODELS)
+    models.extend(get_image_model_specs())
+    models.extend(GEMINI_IMAGE_MODELS)
+    models.extend(OPENAI_IMAGE_MODELS)
     return {"models": models}
 
 
@@ -1078,8 +1224,7 @@ async def list_image_models():
 @router.post("/analyze_prompt")
 async def analyze_prompt(req: AnalyzePromptRequest):
     """Use LLM to generate a video generation prompt from a text description and reference images."""
-    if not _ai() and not _openai():
-        raise HTTPException(400, "AI service is not configured")
+    _ensure_prompt_model_available(req.model)
 
     system = (
         "你是专业的视频生成提示词编写师。请根据用户描述和参考素材，直接写出一段详细的中文视频生成提示词。"
@@ -1141,8 +1286,7 @@ async def analyze_prompt(req: AnalyzePromptRequest):
 @router.post("/refresh_prompt")
 async def refresh_prompt(req: RefreshPromptRequest):
     """Rewrite / enrich an existing prompt using LLM."""
-    if not _ai() and not _openai():
-        raise HTTPException(400, "AI service is not configured")
+    _ensure_prompt_model_available(req.model)
 
     target = (req.target or "video").strip().lower()
     if target == "image":
@@ -1210,8 +1354,7 @@ async def analyze_video(req: AnalyzeVideoRequest):
         if not _ark_api_key():
             raise HTTPException(400, "ARK API Key 未配置，请在设置页面配置火山引擎 ARK Key。")
     elif is_openai:
-        if not deps.openai_service:
-            raise HTTPException(400, "OpenAI API key is not configured")
+        _openai()
     else:
         if not _ai():
             raise HTTPException(400, "Gemini API key is not configured")
@@ -1257,10 +1400,11 @@ async def analyze_video(req: AnalyzeVideoRequest):
                 prompt = prompt.strip()
             elif is_openai:
                 frames = await _extract_video_frames(video_bytes, ext)
+                openai_svc = _openai()
                 result = await _provider_call(
                     "openai",
                     "analyze_video",
-                    lambda: deps.openai_service.chat_vision(
+                    lambda: openai_svc.chat_vision(
                         text_prompt=system_prompt,
                         image_data_list=frames,
                         model=req.model,
@@ -1466,12 +1610,12 @@ async def generate_video(req: GenerateVideoRequest):
                 raise HTTPException(400, "高级视频编辑不能同时使用单参考视频，请保留高级参考视频即可。")
             if req.reference_video_url:
                 if model not in ("seedance-2.0", "seedance-2.0-fast"):
-                    raise HTTPException(400, "参考视频生成当前仅支持 Seedance 2.0 / 2.0 Fast。")
+                    raise HTTPException(400, "参考视频生成当前仅支持 Seedance 2.0。")
                 await _validate_seedance_reference_video_duration(req.reference_video_url)
                 resolved_reference_video = await _resolve_seedance_video_reference(svc, req.reference_video_url)
             if advanced_reference_videos:
                 if model not in ("seedance-2.0", "seedance-2.0-fast"):
-                    raise HTTPException(400, "高级视频编辑当前仅支持 Seedance 2.0 / 2.0 Fast。")
+                    raise HTTPException(400, "高级视频编辑当前仅支持 Seedance 2.0。")
                 resolved_advanced_video_urls: list[str] = []
                 await _validate_seedance_reference_video_total_duration(advanced_reference_videos)
                 for video_url in advanced_reference_videos:
@@ -1501,15 +1645,6 @@ async def generate_video(req: GenerateVideoRequest):
                     seedance_first_frame = seedance_15_images[0] if seedance_15_images else ""
                     seedance_ref_images = seedance_15_images[1:2]
                 else:
-                    if (
-                        not seedance_first_frame
-                        and not resolved_reference_video
-                        and resolved_scene_refs
-                        and not resolved_char_refs
-                        and len(resolved_scene_refs) == 1
-                    ):
-                        seedance_first_frame = resolved_scene_refs[0]
-                        seedance_ref_images = resolved_char_refs + resolved_scene_refs[1:]
                     _ensure_seedance_first_frame_not_mixed(
                         first_frame_url=seedance_first_frame,
                         reference_image_count=len(seedance_ref_images or []),
@@ -1693,7 +1828,7 @@ def _wan():
     if k:
         from wan_service import WanService
         return WanService(api_key=k)
-    return None
+    raise _missing_group_api_key("DashScope Key")
 
 @router.post("/replace_video")
 async def replace_video(req: ReplaceVideoRequest):
@@ -1855,15 +1990,8 @@ async def game_task_status_batch(req: BatchTaskStatusRequest):
 
 
 def get_video_model_specs() -> list[dict]:
-    """Return available video model specs for the UI."""
-    available_providers = set()
-    if _jimeng():
-        available_providers.add("jimeng")
-    if _vidu():
-        available_providers.add("vidu")
-    if _happyhorse():
-        available_providers.add("happyhorse")
-    return _catalog_video_model_specs(provider_filter=available_providers)
+    """Return all supported video model specs for the UI."""
+    return _catalog_video_model_specs()
 
 
 async def _snapshot_completed_task_billing(gt: dict, result: dict):
@@ -1923,7 +2051,7 @@ async def list_project_tasks(project_id: str, limit: int = 50):
 # Game-specific settings
 GAME_SETTING_KEYS = [
     "game_gemini_api_key", "game_gemini_api_keys", "game_ark_api_key", "game_vidu_api_key",
-    "game_dashscope_api_key", "game_api_usage_group",
+    "game_dashscope_api_key",
 ]
 
 class GameSettingRequest(BaseModel):
@@ -1934,11 +2062,8 @@ class GameSettingRequest(BaseModel):
 async def get_game_settings():
     result = {}
     for k in GAME_SETTING_KEYS:
-        if k == "game_api_usage_group":
-            result[k] = await _db_call(db.get_user_setting, k, "")
-            continue
         base_key = k.removeprefix("game_")
-        v = await _db_call(db.get_user_setting, k, "") or _user_key(base_key)
+        v = _user_key(base_key)
         result[k] = ("*" * 8 + v[-4:]) if v and len(v) > 4 else ("***" if v else "")
     result["api_usage_groups"] = deps.get_api_usage_groups()
     result["resolved_api_usage_group"] = deps.current_api_usage_group()
@@ -1948,9 +2073,4 @@ async def get_game_settings():
 async def set_game_setting(req: GameSettingRequest):
     if req.key not in GAME_SETTING_KEYS:
         raise HTTPException(400, f"不支持的设置项: {req.key}")
-    v = req.value.strip()
-    if req.key == "game_api_usage_group":
-        v = deps.normalize_api_usage_group(v)
-    await _db_call(db.set_user_setting, req.key, v)
-    logger.info("Game setting updated (per-user): %s", req.key)
-    return {"ok": True}
+    raise HTTPException(400, "API Key 已改为按部门/团队统一配置，请到系统设置的 ApiKey 设置中配置对应团队 Key。")

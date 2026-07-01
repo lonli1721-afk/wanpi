@@ -38,11 +38,8 @@ def _size_to_gemini_aspect(width: int, height: int) -> str:
 
 def _friendly_error(e: Exception) -> str:
     msg = str(e)
-    lower = msg.lower()
     if "429" in msg or "RESOURCE_EXHAUSTED" in msg:
         return "该模型当前触发限流或配额不足，请稍后重试，或检查 Google AI Studio 配额。"
-    if "500" in msg or "INTERNAL" in msg:
-        return "Gemini 上游服务返回内部错误。通常是模型暂时不稳定、视频/图片输入过大，或新模型权限还未完全开放；请稍后重试，或切换到 Gemini 2.5 Flash / Doubao Seed 2.0 Pro。"
     if "503" in msg or "UNAVAILABLE" in msg:
         return "模型服务当前繁忙，请稍后重试。"
     if "504" in msg or "DEADLINE_EXCEEDED" in msg:
@@ -51,8 +48,6 @@ def _friendly_error(e: Exception) -> str:
         return "模型不存在或已下线，请检查当前模型配置。"
     if "403" in msg or "PERMISSION_DENIED" in msg:
         return "API Key 权限不足，请检查 Key 是否正确或重新生成。"
-    if "10054" in msg or "forcibly closed" in lower or "connection reset" in lower or "远程主机强迫关闭" in msg:
-        return "Gemini 连接被远端或代理中途断开，系统已自动重试但仍失败。请稍后再试，或先切换到 Gemini 2.5 Flash / Doubao Seed 2.0 Pro。"
     if "400" in msg or "INVALID_ARGUMENT" in msg:
         return "请求参数错误：" + msg[:200]
     return msg[:300]
@@ -91,22 +86,6 @@ def _is_rate_limit_error(e: Exception) -> bool:
         "请求过于频繁",
     )
     return any(marker.lower() in msg.lower() for marker in markers)
-
-
-def _is_transient_connection_error(e: Exception) -> bool:
-    msg = str(e)
-    lower = msg.lower()
-    markers = (
-        "10054",
-        "connection reset",
-        "forcibly closed",
-        "remote host",
-        "server disconnected",
-        "read operation timed out",
-        "write operation timed out",
-        "远程主机强迫关闭",
-    )
-    return any(marker in lower or marker in msg for marker in markers)
 
 
 class AIService:
@@ -149,7 +128,6 @@ class AIService:
             project_min_interval_seconds = float(os.environ.get("GEMINI_PROJECT_MIN_INTERVAL_SECONDS", "6") or "6")
         if queue_timeout_seconds is None:
             queue_timeout_seconds = float(os.environ.get("GEMINI_QUEUE_TIMEOUT_SECONDS", "90") or "90")
-        self._transient_retry_count = max(0, int(os.environ.get("GEMINI_TRANSIENT_RETRIES", "2") or "2"))
         self._cooldown_seconds = max(5, int(cooldown_seconds or 90))
         self._queue_timeout_seconds = max(1.0, float(queue_timeout_seconds or 90))
         self._project_min_interval_seconds = max(0.0, float(project_min_interval_seconds or 0))
@@ -278,7 +256,7 @@ class AIService:
         self._project_started += 1
         try:
             last_error: Exception | None = None
-            attempts = max(1, len(self._clients)) + self._transient_retry_count
+            attempts = max(1, len(self._clients))
             for _ in range(attempts):
                 key, client = await self._pick_client()
                 if not client:
@@ -295,12 +273,6 @@ class AIService:
                             self._key_stats[key]["total_completed"] += 1
                 except Exception as e:
                     if not _is_rate_limit_error(e):
-                        if _is_transient_connection_error(e):
-                            last_error = e
-                            self._key_stats[key]["total_errors"] += 1
-                            log.warning("Gemini transient connection error; retrying once if possible: %s", e)
-                            await asyncio.sleep(0.8)
-                            continue
                         self._key_stats[key]["total_errors"] += 1
                         raise
                     last_error = e
@@ -309,8 +281,6 @@ class AIService:
                     log.warning("Gemini key hit rate limit; trying next key if available")
 
             if last_error:
-                if _is_transient_connection_error(last_error):
-                    raise Exception(_friendly_error(last_error))
                 raise Exception("所有 Gemini API Key 当前都触发限流，请稍后重试或补充其他项目的 Key。")
             raise Exception("所有 Gemini API Key 当前都在冷却中，请稍后重试。")
         finally:

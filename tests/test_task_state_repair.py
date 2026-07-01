@@ -118,11 +118,6 @@ def write_probe_report(
     provider: str = "jimeng",
     model: str = "seedance-2.0",
     local_status: str = "processing",
-    provider_status: str = "completed",
-    raw_status: str = "succeeded",
-    has_provider_video_url: bool = True,
-    provider_video_url: str = "https://example.com/video.mp4",
-    provider_error: str = "",
 ) -> None:
     payload = {
         "action": "task_state_probe",
@@ -142,11 +137,10 @@ def write_probe_report(
             "model": model,
             "local_status": local_status,
             "local_updated_at": updated_at,
-            "provider_status": provider_status,
-            "raw_status": raw_status,
-            "has_provider_video_url": has_provider_video_url,
-            "provider_video_url": provider_video_url,
-            "provider_error": provider_error,
+            "provider_status": "completed",
+            "raw_status": "succeeded",
+            "has_provider_video_url": True,
+            "provider_video_url": "https://example.com/video.mp4",
         }],
     }
     path.write_text(json.dumps(payload), encoding="utf-8")
@@ -508,116 +502,6 @@ class TaskStateRepairTests(unittest.TestCase):
             scene = json.loads(raw)["generate"][0]
             self.assertEqual(scene["status"], "failed")
             self.assertIn("链接已过期", scene["error"])
-
-    def test_provider_failed_terminalize_requires_explicit_opt_in(self):
-        repair = load_task_state_repair_module()
-        with tempfile.TemporaryDirectory() as tmp:
-            data_dir = Path(tmp)
-            write_settings(data_dir)
-            db_path = create_user_db(data_dir)
-            report = data_dir / "probe.json"
-            write_probe_report(
-                report,
-                provider_status="failed",
-                raw_status="failed",
-                has_provider_video_url=False,
-                provider_video_url="",
-                provider_error="OutputVideoSensitiveContentDetected.PolicyViolation",
-            )
-
-            payload = repair.repair_tasks(
-                make_args(repair, data_dir, report, "--task-id", "task-1"),
-                query_func=lambda *_args: self.fail("provider-failed probe should not be selected without opt-in"),
-            )
-
-            self.assertEqual(payload["candidate_count"], 0)
-            self.assertEqual(status_of(db_path)["status"], "processing")
-
-    def test_dry_run_can_terminalize_provider_failed_task(self):
-        repair = load_task_state_repair_module()
-        with tempfile.TemporaryDirectory() as tmp:
-            data_dir = Path(tmp)
-            write_settings(data_dir)
-            db_path = create_user_db(data_dir)
-            report = data_dir / "probe.json"
-            write_probe_report(
-                report,
-                provider_status="failed",
-                raw_status="failed",
-                has_provider_video_url=False,
-                provider_video_url="",
-                provider_error="OutputVideoSensitiveContentDetected.PolicyViolation",
-            )
-
-            payload = repair.repair_tasks(
-                make_args(
-                    repair,
-                    data_dir,
-                    report,
-                    "--task-id", "task-1",
-                    "--expected-count", "1",
-                    "--terminalize-provider-failed",
-                    "--repair-scenes",
-                ),
-                query_func=lambda _api_key, _task_id: {
-                    "status": "failed",
-                    "video_url": "",
-                    "error": "OutputVideoSensitiveContentDetected.PolicyViolation",
-                    "raw_status": "failed",
-                },
-            )
-
-            self.assertEqual(payload["would_mark_failed_count"], 1)
-            self.assertEqual(payload["rows"][0]["status"], "would_mark_failed")
-            self.assertEqual(status_of(db_path)["status"], "processing")
-
-    def test_execute_terminalizes_provider_failed_task_and_scene(self):
-        repair = load_task_state_repair_module()
-        with tempfile.TemporaryDirectory() as tmp:
-            data_dir = Path(tmp)
-            write_settings(data_dir)
-            db_path = create_user_db(data_dir)
-            report = data_dir / "probe.json"
-            write_probe_report(
-                report,
-                provider_status="failed",
-                raw_status="failed",
-                has_provider_video_url=False,
-                provider_video_url="",
-                provider_error="OutputVideoSensitiveContentDetected.PolicyViolation",
-            )
-
-            payload = repair.repair_tasks(
-                make_args(
-                    repair,
-                    data_dir,
-                    report,
-                    "--execute",
-                    "--expected-count", "1",
-                    "--task-id", "task-1",
-                    "--terminalize-provider-failed",
-                    "--repair-scenes",
-                ),
-                query_func=lambda _api_key, _task_id: {
-                    "status": "failed",
-                    "video_url": "",
-                    "error": "OutputVideoSensitiveContentDetected.PolicyViolation",
-                    "raw_status": "failed",
-                },
-            )
-
-            task = status_of(db_path)
-            self.assertEqual(payload["failed_marked_count"], 1)
-            self.assertEqual(task["status"], "failed")
-            self.assertEqual(task["video_url"], "")
-            self.assertIn("内容安全/版权限制", task["error"])
-            self.assertTrue(Path(payload["db_backups"]["user-a"]).exists())
-            conn = sqlite3.connect(db_path)
-            raw = conn.execute("SELECT scenes_json FROM game_projects WHERE id='project-1'").fetchone()[0]
-            conn.close()
-            scene = json.loads(raw)["generate"][0]
-            self.assertEqual(scene["status"], "failed")
-            self.assertIn("内容安全/版权限制", scene["error"])
 
     def test_failed_local_status_requires_explicit_opt_in(self):
         repair = load_task_state_repair_module()

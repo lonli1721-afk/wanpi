@@ -446,7 +446,7 @@ export default function SceneVideoCard({
           <div style={{ marginBottom: 10 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 5 }}>
               <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-secondary)' }}>文本描述</span>
-              <select value={scene.aiModel || 'gemini-2.5-flash'} onChange={event => onUpdateScene(scene.id, { aiModel: event.target.value })}
+              <select value={scene.aiModel || 'doubao-seed-2-0-pro-260215'} onChange={event => onUpdateScene(scene.id, { aiModel: event.target.value })}
                 style={{ marginLeft: 'auto', padding: '1px 4px', borderRadius: 4, background: 'var(--bg-primary)', border: '1px solid var(--border)', color: 'var(--text-secondary)', fontSize: 10 }}>
                 {AI_MODELS.map(model => <option key={model.id} value={model.id}>{model.name}</option>)}
               </select>

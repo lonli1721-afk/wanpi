@@ -15,7 +15,7 @@ export default function ImageGenerationModal({
   quality,
   prompt,
   refImages,
-  editMode,
+  editMode: rawEditMode,
   loading,
   cleanImageModelName,
   preventFocusLoss,
@@ -36,6 +36,8 @@ export default function ImageGenerationModal({
 
   const assetLabel = modal.type === 'character' ? '角色' : '场景'
   const normalizedQuality = normalizeImageQualityForModel(quality, selectedModel)
+  const hasGeneratedEditReference = refImages.some(img => img?.source === 'generated')
+  const editMode = rawEditMode && hasGeneratedEditReference
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 999 }} onClick={() => !loading && onClose()}>
@@ -120,7 +122,7 @@ export default function ImageGenerationModal({
             <span style={{ fontSize: 10, color: 'var(--text-muted)', opacity: 0.6 }}>可选，上传参考图实现风格/构图迁移</span>
           </div>
 
-          {refImages.length > 0 && (
+          {editMode && (
             <label style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 8, padding: '7px 9px', borderRadius: 6, background: editMode ? 'rgba(59,130,246,0.10)' : 'var(--bg-primary)', border: editMode ? '1px solid rgba(59,130,246,0.24)' : '1px solid var(--border)', cursor: 'pointer' }}>
               <input
                 type="checkbox"
@@ -128,7 +130,7 @@ export default function ImageGenerationModal({
                 onChange={event => onEditModeChange(event.target.checked)}
               />
               <Pencil size={12} color={editMode ? '#3b82f6' : 'var(--text-muted)'} />
-              <span style={{ fontSize: 11, fontWeight: 600, color: editMode ? '#3b82f6' : 'var(--text-secondary)' }}>参考图编辑模式</span>
+              <span style={{ fontSize: 11, fontWeight: 600, color: editMode ? '#3b82f6' : 'var(--text-secondary)' }}>生成图编辑模式</span>
               <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>改字 / 局部替换</span>
             </label>
           )}
@@ -154,7 +156,7 @@ export default function ImageGenerationModal({
         </div>
 
         <button onClick={onGenerate} disabled={loading || !prompt.trim()} style={{ width: '100%', padding: '10px 0', borderRadius: 8, marginTop: 12, fontSize: 13, fontWeight: 600, background: loading ? 'var(--bg-tertiary)' : 'var(--accent-gradient)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, flexShrink: 0 }}>
-          {loading ? <><Loader2 size={14} className="spin" /> 生成中...</> : <><Sparkles size={14} /> {refImages.length > 0 && editMode ? '编辑参考图' : refImages.length > 0 ? '参考图生成' : '生成图片'}</>}
+          {loading ? <><Loader2 size={14} className="spin" /> 生成中...</> : <><Sparkles size={14} /> {editMode ? '编辑生成图' : refImages.length > 0 ? '参考图生成' : '生成图片'}</>}
         </button>
 
         {history.length > 0 && (

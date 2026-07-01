@@ -95,7 +95,7 @@ const API_KEYS = [
     icon: Sparkles,
     items: [
       { key: 'api_proxy_url', title: 'API 代理服务器地址', desc: '国内访问 OpenAI/Gemini 等海外API的代理地址（如 http://47.91.31.32）。设置后自动路由海外API请求。', link: '配置说明', url: '#', accent: '#f43f5e', isUrl: true },
-      { key: 'openai_api_key', title: 'OpenAI API Key（代理中转）', desc: '用于 GPT-5.4/GPT-4o 等模型，通过代理中转 API 调用。', link: '配置说明', url: 'https://platform.openai.com/api-keys', accent: '#10a37f' },
+      { key: 'openai_api_key', title: 'OpenAI API Key（GPT Image 2 测试）', desc: '当前本地版本仅用于图片工作台的 GPT Image 2 图片生成测试，其他 GPT 文本模型暂不开放。', link: '配置说明', url: 'https://platform.openai.com/api-keys', accent: '#10a37f' },
       { key: 'openai_base_url', title: 'OpenAI Base URL（自定义地址）', desc: '自定义 OpenAI API 地址。已配置代理服务器时无需填写。', link: '默认地址', url: '#', accent: '#10a37f', isUrl: true },
       { key: 'gemini_api_key', title: 'Google Gemini API Key', desc: '用于 AI 对话、剧本分析。前往', link: 'Google AI Studio', url: 'https://aistudio.google.com/apikey', accent: '#4285f4' },
       { key: 'qwen_api_key', title: '千问 API Key (阿里云百炼)', desc: '用于千问3-32B/235B等模型，国内直连无需代理。前往', link: '阿里云百炼控制台', url: 'https://bailian.console.aliyun.com/?apiKey=1#/api-key', accent: '#ff6a00' },
@@ -115,16 +115,119 @@ const API_KEYS = [
 
 /* ───────── ApiKeys Panel ───────── */
 const API_USAGE_GROUPS = [
-  { id: 'fa1', label: '发一', desc: '发行事业一部（不含混变项目组）' },
   { id: 'fa1_hunbian', label: '发一混变组', desc: '发行事业一部 / 混变项目组' },
-  { id: 'fa2', label: '发二', desc: '发行事业二部' },
-  { id: 'fa3', label: '发三', desc: '发行事业三部' },
-  { id: 'market', label: '市场发展部', desc: '市场发展部' },
+  { id: 'fa1_project1', label: '发一项目一部', desc: '发行事业一部 / 项目一部' },
+  { id: 'fa1_project2', label: '发一项目二部', desc: '发行事业一部 / 项目二部' },
+  { id: 'fa1_project3', label: '发一项目三部', desc: '发行事业一部 / 项目三部' },
+  { id: 'fa1_creative', label: '发一创意部', desc: '发行事业一部 / 创意部' },
+  { id: 'fa1_baoliang', label: '发一爆量组', desc: '发行事业一部 / 爆量组' },
+  { id: 'fa2_zhitou', label: '发二直投组', desc: '发行事业二部 / 直投组' },
+  { id: 'fa2_wechat', label: '发二微信组', desc: '发行事业二部 / 微信组' },
+  { id: 'fa2_tt', label: '发二TT组', desc: '发行事业二部 / TT组' },
+  { id: 'fa2_research', label: '发二研发组', desc: '发行事业二部 / 研发组' },
+  { id: 'fa3_baoliang', label: '发三爆量组', desc: '发行事业三部 / 发三爆量组' },
+  { id: 'market_tt', label: '市场TT组', desc: '市场发展部 / TT组' },
+  { id: 'hr_admin_ssc', label: '行政SSC组', desc: '人力资源部 / 行政SSC组' },
+]
+
+API_USAGE_GROUPS.push({ id: 'admin_test', label: 'Admin Test', desc: 'Admin / Test' })
+
+const LEGACY_GROUP_API_FIELDS = [
+  { suffix: 'ark_api_key', label: '火山 ARK Key', placeholder: 'Seedance / Seedream / Doubao 使用' },
+  { suffix: 'gemini_api_key', label: 'Gemini Key 池', placeholder: '支持多个 Key，换行/逗号分隔' },
+  { suffix: 'openai_api_key', label: 'OpenAI Key', placeholder: 'GPT / Image2 使用' },
+  { suffix: 'openai_base_url', label: 'OpenAI Base URL', placeholder: '可选，如部门有独立代理地址再填写' },
+  { suffix: 'qwen_api_key', label: '千问 Key', placeholder: '千问 / 通义相关模型使用' },
+  { suffix: 'dashscope_api_key', label: 'DashScope / 万相 Key', placeholder: '欢乐马 / 万相 / 阿里通道使用' },
+  { suffix: 'nanobanana_pro_api_key', label: 'NanoBanana Pro Key', placeholder: 'NanoBanana Pro / 高质量通道' },
+  { suffix: 'nanobanana_base_url', label: 'NanoBanana Base URL', placeholder: '可选，如部门有独立代理地址再填写' },
+  { suffix: 'vidu_api_key', label: 'VIDU Key', placeholder: 'VIDU 视频模型使用' },
+  { suffix: 'hailuo_api_key', label: '海螺 Key', placeholder: '海螺视频模型使用' },
+  { suffix: 'fal_api_key', label: 'FAL Key', placeholder: 'FAL 图片/视频模型使用' },
+  { suffix: 'hunyuan_secret_id', label: '腾讯混元 SecretId', placeholder: '腾讯混元 SecretId' },
+  { suffix: 'hunyuan_secret_key', label: '腾讯混元 SecretKey', placeholder: '腾讯混元 SecretKey' },
 ]
 
 const GROUP_API_FIELDS = [
-  { suffix: 'ark_api_key', label: '火山 ARK Key', placeholder: 'Seedance / Seedream / Doubao 使用' },
+  { suffix: 'api_proxy_url', label: '部门 API 代理服务器地址', placeholder: '例如：http://43.167.187.203', desc: '部门公用的海外 API 代理地址，Gemini / OpenAI 等通道优先使用。', link: '配置说明', url: '#', isUrl: true },
+  { suffix: 'openai_base_url', label: 'OpenAI Base URL', placeholder: '可选，例如：https://api.openai.com/v1', desc: '部门公用的 OpenAI 兼容模型地址；如已填写部门代理，可不填。', link: 'OpenAI 文档', url: 'https://platform.openai.com/docs', isUrl: true },
+  { suffix: 'nanobanana_base_url', label: 'NanoBanana Base URL', placeholder: '可选，部门独立 NanoBanana 地址', desc: '部门公用的 NanoBanana 模型地址，留空则由后端默认策略处理。', link: 'NanoBanana', url: 'https://grsai.dakka.com.cn', isUrl: true },
+  { suffix: 'ark_api_key', label: '火山引擎 ARK Key', placeholder: 'Seedream 图片生成 / Seedance 视频生成 / Doubao 使用', desc: '用于即梦 Seedream 图片生成和 Seedance 视频生成。', link: '火山引擎控制台', url: 'https://console.volcengine.com/ark/region:ark+cn-beijing/apiKey' },
+  { suffix: 'gemini_api_key', label: 'Gemini Key 池', placeholder: '支持多个 Key，换行/逗号分隔', desc: '用于 Gemini 分析、反推、提示词生成等。', link: 'Google AI Studio', url: 'https://aistudio.google.com/apikey' },
+  { suffix: 'openai_api_key', label: 'OpenAI Key', placeholder: 'GPT / Image2 使用', desc: '用于 OpenAI 相关模型和 Image2 内测能力。', link: 'OpenAI API Keys', url: 'https://platform.openai.com/api-keys' },
+  { suffix: 'dashscope_api_key', label: '阿里云 DashScope Key', placeholder: '阿里云百炼 / 万相 / 欢乐马通道使用', desc: '用于阿里云百炼、万相视频换人和欢乐马相关能力。', link: '阿里云百炼控制台', url: 'https://bailian.console.aliyun.com/?apiKey=1#/api-key' },
+  { suffix: 'qwen_api_key', label: '阿里云千问 Key', placeholder: '千问 / 通义相关模型使用', desc: '如千问通道与 DashScope 独立计费，可单独填写。', link: '阿里云百炼控制台', url: 'https://bailian.console.aliyun.com/?apiKey=1#/api-key' },
+  { suffix: 'nanobanana_pro_api_key', label: 'NanoBanana Pro Key', placeholder: 'NanoBanana Pro / 高质量通道 Key', desc: '用于 NanoBanana Pro 或高质量图像生成通道。', link: 'NanoBanana', url: 'https://grsai.dakka.com.cn' },
 ]
+
+const DEPARTMENT_API_FIELDS = [
+  { suffix: 'api_proxy_url', label: 'API 代理服务器地址', placeholder: '输入 API 代理服务器地址 ...', desc: '国内访问 OpenAI/Gemini 等海外API的代理地址（如 http://47.91.31.32）。设置后自动路由海外API请求。', link: '配置说明', url: '#', isUrl: true },
+  { suffix: 'openai_base_url', label: 'OpenAI Base URL（自定义地址）', placeholder: '输入 OpenAI Base URL（自定义地址） ...', desc: '自定义 OpenAI API 地址。已配置代理服务器时无需填写。', link: '默认地址', url: '#', isUrl: true },
+  { suffix: 'nanobanana_base_url', label: 'NanoBanana API 根地址（可选）', placeholder: '输入 NanoBanana API 根地址（可选） ...', desc: '留空时优先连接 grsai.dakka.com.cn，失败则自动切换 grsaiapi.com。若需固定节点可填写完整根地址（无末尾斜杠）。', link: '说明', url: 'https://grsai.dakka.com.cn', isUrl: true },
+  { suffix: 'ark_api_key', label: 'ARK_API_KEY（火山引擎：Seedream 生图 + Seedance 生视频）', placeholder: '输入 ARK_API_KEY ...', desc: '用于即梦 Seedream 图片生成和 Seedance 视频生成。前往', link: '火山引擎控制台', url: 'https://console.volcengine.com/ark/region:ark+cn-beijing/apiKey' },
+  { suffix: 'gemini_api_key', label: 'Google Gemini API Key', placeholder: '输入 Google Gemini API Key ...', desc: '用于 AI 对话、剧本分析。前往', link: 'Google AI Studio', url: 'https://aistudio.google.com/apikey' },
+  { suffix: 'openai_api_key', label: 'OpenAI API Key（GPT Image 2 测试）', placeholder: '输入 OpenAI API Key ...', desc: '当前本地版本仅用于图片工作台的 GPT Image 2 图片生成测试，其他 GPT 文本模型暂不开放。', link: '配置说明', url: 'https://platform.openai.com/api-keys' },
+  { suffix: 'qwen_api_key', label: '千问 API Key (阿里云百炼)', placeholder: '输入千问 API Key ...', desc: '用于千问3-32B/235B等模型，国内直连无需代理。前往', link: '阿里云百炼控制台', url: 'https://bailian.console.aliyun.com/?apiKey=1#/api-key' },
+  { suffix: 'dashscope_api_key', label: 'DashScope API Key（万相视频换人）', placeholder: '输入 DashScope API Key ...', desc: '用于阿里云万相 wan2.2-animate-mix 视频换人。前往', link: '阿里云百炼控制台', url: 'https://bailian.console.aliyun.com/?apiKey=1#/api-key' },
+  { suffix: 'nanobanana_pro_api_key', label: 'NanoBanana Pro API Key', placeholder: '输入 NanoBanana Pro API Key ...', desc: 'NanoBanana Pro 图像生成。前往', link: 'NanoBanana', url: 'https://grsai.dakka.com.cn' },
+]
+
+const MULERUN_STUDIO_FIELDS = [
+  { suffix: 'mulerun_studio_enabled', label: 'MuleRun Studio Enabled', placeholder: 'true / false', desc: 'Enable local MuleRun Studio for GPT Image 2. Each group must configure its own MuleRun Token below.', link: 'MuleRun Studio', url: 'https://mulerun.com/docs/cli/commands/studio', isUrl: true, plainText: true },
+  { suffix: 'mulerun_cli_path', label: 'MuleRun CLI Path', placeholder: 'mulerun', desc: 'Optional. Use mulerun from PATH by default, or fill a full mulerun.cmd path on Windows.', link: 'MuleRun Studio', url: 'https://mulerun.com/docs/cli/commands/studio', isUrl: true, plainText: true },
+  { suffix: 'mulerun_gpt_image_endpoint', label: 'MuleRun GPT Image Endpoint', placeholder: 'openai/gpt-image-2/generation', desc: 'Studio endpoint for GPT Image 2 text-to-image generation.', link: 'MuleRun Studio', url: 'https://mulerun.com/docs/cli/commands/studio', isUrl: true, plainText: true },
+  { suffix: 'mulerun_gpt_image_edit_endpoint', label: 'MuleRun GPT Image Edit Endpoint', placeholder: 'openai/gpt-image-2/edit', desc: 'Studio endpoint for GPT Image 2 reference-image editing.', link: 'MuleRun Studio', url: 'https://mulerun.com/docs/cli/commands/studio', isUrl: true, plainText: true },
+  { suffix: 'mulerun_max_wait_seconds', label: 'MuleRun Max Wait Seconds', placeholder: '900', desc: 'Maximum Studio wait time for one image task.', link: 'MuleRun Studio', url: 'https://mulerun.com/docs/cli/commands/studio', isUrl: true, plainText: true },
+]
+
+const COMMON_API_ADDRESS_FIELDS = [
+  ...DEPARTMENT_API_FIELDS.filter(field => field.isUrl),
+  ...MULERUN_STUDIO_FIELDS,
+]
+const DEPARTMENT_KEY_FIELDS = [
+  ...DEPARTMENT_API_FIELDS.filter(field => !field.isUrl),
+  { suffix: 'mulerun_token', label: 'MuleRun Token', placeholder: 'Current group MuleRun token', desc: 'Used by GPT Image 2 through MuleRun Studio. This token is isolated per group and will not fall back to local mulerun login.', link: 'MuleRun Studio', url: 'https://mulerun.com/docs/cli/commands/studio' },
+]
+
+function groupApiTheme(groupId) {
+  return {
+    fa1_hunbian: { color: '#7c3aed', bg: 'rgba(124,58,237,0.08)', border: 'rgba(124,58,237,0.22)', mark: 'HB' },
+    fa1_project2: { color: '#2563eb', bg: 'rgba(37,99,235,0.08)', border: 'rgba(37,99,235,0.22)', mark: 'P2' },
+    fa1_project1: { color: '#4f46e5', bg: 'rgba(79,70,229,0.08)', border: 'rgba(79,70,229,0.22)', mark: 'P1' },
+    fa1_project3: { color: '#0f766e', bg: 'rgba(15,118,110,0.08)', border: 'rgba(15,118,110,0.22)', mark: 'P3' },
+    fa1_creative: { color: '#d946ef', bg: 'rgba(217,70,239,0.08)', border: 'rgba(217,70,239,0.22)', mark: 'CY' },
+    fa1_baoliang: { color: '#dc2626', bg: 'rgba(220,38,38,0.08)', border: 'rgba(220,38,38,0.22)', mark: 'BL' },
+    fa2_zhitou: { color: '#0891b2', bg: 'rgba(8,145,178,0.08)', border: 'rgba(8,145,178,0.22)', mark: 'ZT' },
+    fa2_wechat: { color: '#059669', bg: 'rgba(5,150,105,0.08)', border: 'rgba(5,150,105,0.22)', mark: 'WX' },
+    fa2_tt: { color: '#f97316', bg: 'rgba(249,115,22,0.08)', border: 'rgba(249,115,22,0.22)', mark: 'TT' },
+    fa2_research: { color: '#db2777', bg: 'rgba(219,39,119,0.08)', border: 'rgba(219,39,119,0.22)', mark: 'RD' },
+    fa3_baoliang: { color: '#b45309', bg: 'rgba(180,83,9,0.08)', border: 'rgba(180,83,9,0.22)', mark: 'F3' },
+    market_tt: { color: '#16a34a', bg: 'rgba(22,163,74,0.08)', border: 'rgba(22,163,74,0.22)', mark: 'MK' },
+    hr_admin_ssc: { color: '#9333ea', bg: 'rgba(147,51,234,0.08)', border: 'rgba(147,51,234,0.22)', mark: 'HR' },
+  }[groupId] || { color: 'var(--accent)', bg: 'var(--accent-light)', border: 'var(--border-accent)', mark: 'API' }
+}
+
+function groupFieldMeta(suffix) {
+  if (suffix.includes('proxy') || suffix.includes('base_url')) {
+    return { icon: Cloud, color: '#0ea5e9', bg: 'rgba(14,165,233,0.08)', border: 'rgba(14,165,233,0.18)', tag: '地址' }
+  }
+  if (suffix.includes('ark')) {
+    return { icon: Cpu, color: '#f97316', bg: 'rgba(249,115,22,0.08)', border: 'rgba(249,115,22,0.18)', tag: '火山' }
+  }
+  if (suffix.includes('gemini')) {
+    return { icon: Sparkles, color: '#4285f4', bg: 'rgba(66,133,244,0.08)', border: 'rgba(66,133,244,0.18)', tag: 'Gemini' }
+  }
+  if (suffix.includes('openai')) {
+    return { icon: Sparkles, color: '#10a37f', bg: 'rgba(16,163,127,0.08)', border: 'rgba(16,163,127,0.18)', tag: 'OpenAI' }
+  }
+  if (suffix.includes('dashscope') || suffix.includes('qwen')) {
+    return { icon: Cpu, color: '#3b82f6', bg: 'rgba(59,130,246,0.08)', border: 'rgba(59,130,246,0.18)', tag: '阿里云' }
+  }
+  if (suffix.includes('nanobanana')) {
+    return { icon: Key, color: '#f59e0b', bg: 'rgba(245,158,11,0.1)', border: 'rgba(245,158,11,0.2)', tag: 'Nano' }
+  }
+  return { icon: Key, color: 'var(--accent)', bg: 'var(--accent-light)', border: 'var(--border-accent)', tag: 'Key' }
+}
 
 function maskKey(value) {
   if (!value) return ''
@@ -135,53 +238,135 @@ function maskKey(value) {
 function GroupApiKeysPanel({ keys, saved, error, onUpdateKey, onSaveKey }) {
   const [showMap, setShowMap] = useState({})
   const toggleShow = key => setShowMap(prev => ({ ...prev, [key]: !prev[key] }))
+  const openFieldLink = (url) => {
+    if (!url || url === '#') return
+    if (window.electronAPI) window.electronAPI.openBrowserUrl(url)
+    else window.open(url)
+  }
 
   return (
-    <div style={{ marginTop: 24 }}>
+    <div style={{ marginTop: 8 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
         <Key size={15} style={{ color: 'var(--text-muted)' }} />
-        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 1 }}>分组 API Key</span>
+        <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 1 }}>分组 API Key</span>
       </div>
-      <p style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.7, marginBottom: 14 }}>
-        按发一、发二、发三、市场发展部、发一混变组分别填写火山 ARK Key。成员发起火山相关任务时会优先使用所属组 Key；未配置时自动回退到原来的全局 Key。
+      <p style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.7, marginBottom: 14 }}>
+        按发一混变组、发一项目一部、发一项目二部、发二直投组、发二微信组、发二TT组、发二研发组分别配置各模型通道 Key。成员发起任务时只使用所属部门/组的 Key；未配置时不会回退全局 Key，需要先补齐对应分组配置。
       </p>
-      {API_USAGE_GROUPS.map(group => (
-        <div key={group.id} style={{ background: 'var(--bg-secondary)', borderRadius: 'var(--radius)', padding: 18, marginBottom: 12, border: '1px solid var(--border)' }}>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 12 }}>
-            <span style={{ fontSize: 15, fontWeight: 700 }}>{group.label}</span>
-            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{group.desc}</span>
+      <div style={{ borderRadius: 18, marginBottom: 18, border: '1px solid rgba(14,165,233,0.24)', background: 'linear-gradient(135deg, rgba(14,165,233,0.09), rgba(255,255,255,0.96) 46%)', boxShadow: '0 12px 28px rgba(15,23,42,0.06)', overflow: 'hidden' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '18px 20px', borderBottom: '1px solid rgba(14,165,233,0.18)' }}>
+          <div style={{ width: 40, height: 40, borderRadius: 13, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0284c7', background: 'rgba(14,165,233,0.12)', border: '1px solid rgba(14,165,233,0.24)' }}>
+            <Cloud size={19} />
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 12 }}>
-            {GROUP_API_FIELDS.map(field => {
+          <div>
+            <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--text-primary)' }}>公共模型地址</div>
+            <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 3 }}>所有部门共用的代理地址 / Base URL，只需要在这里填写一次。</div>
+          </div>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 13, padding: 18 }}>
+          {COMMON_API_ADDRESS_FIELDS.map(field => {
+            const key = field.suffix
+            const value = keys[key] || ''
+            const visible = showMap[key]
+            const meta = groupFieldMeta(field.suffix)
+            const FieldIcon = meta.icon
+            return (
+              <div key={key} style={{ border: `1px solid ${meta.border}`, borderLeft: `4px solid ${meta.color}`, borderRadius: 13, padding: 16, background: `linear-gradient(90deg, ${meta.bg}, var(--bg-primary) 30%)` }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 8 }}>
+                  <span style={{ width: 30, height: 30, borderRadius: 10, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: meta.bg, color: meta.color, border: `1px solid ${meta.border}` }}>
+                    <FieldIcon size={16} />
+                  </span>
+                  <span style={{ fontSize: 15, fontWeight: 800 }}>{field.label}</span>
+                  {value && <span style={{ fontSize: 11, color: '#10b981', fontWeight: 700, background: 'rgba(16,185,129,0.1)', padding: '2px 7px', borderRadius: 7 }}>已配置</span>}
+                </div>
+                {field.desc && (
+                  <p style={{ margin: '0 0 10px', fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.65 }}>
+                    {field.desc}{' '}
+                    {field.url && field.url !== '#' && (
+                      <a href="#" onClick={event => { event.preventDefault(); openFieldLink(field.url) }}>{field.link || '前往控制台'}</a>
+                    )}
+                  </p>
+                )}
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <div style={{ flex: 1, position: 'relative' }}>
+                    <input
+                      type={visible ? 'text' : 'password'}
+                      value={value}
+                      onChange={event => onUpdateKey(key, event.target.value)}
+                      placeholder={field.placeholder}
+                      style={{ width: '100%', paddingRight: 38, fontSize: 14 }}
+                    />
+                    <button type="button" onClick={() => toggleShow(key)} style={{ position: 'absolute', right: 7, top: '50%', transform: 'translateY(-50%)', background: 'none', color: 'var(--text-muted)' }}>
+                      {visible ? <EyeOff size={14} /> : <Eye size={14} />}
+                    </button>
+                  </div>
+                  <button type="button" onClick={() => onSaveKey(key, value)} style={{ padding: '7px 15px', borderRadius: 8, background: 'var(--accent)', color: '#fff', fontWeight: 700, fontSize: 13 }}>
+                    保存
+                  </button>
+                </div>
+                {value && !visible && <div style={{ marginTop: 7, fontSize: 12, color: 'var(--text-muted)' }}>当前：{maskKey(value)}</div>}
+                {saved === key && <div style={{ marginTop: 7, color: '#10b981', fontSize: 12 }}>已保存</div>}
+                {error === key && <div style={{ marginTop: 7, color: '#ef4444', fontSize: 12 }}>保存失败</div>}
+              </div>
+            )
+          })}
+        </div>
+      </div>
+      {API_USAGE_GROUPS.map(group => (
+        <div key={group.id} style={{ background: `linear-gradient(135deg, ${groupApiTheme(group.id).bg}, var(--bg-secondary) 42%)`, borderRadius: 16, padding: 0, marginBottom: 16, border: `1px solid ${groupApiTheme(group.id).border}`, boxShadow: '0 10px 24px rgba(15,23,42,0.05)', overflow: 'hidden' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '16px 18px', borderBottom: `1px solid ${groupApiTheme(group.id).border}`, background: `linear-gradient(90deg, ${groupApiTheme(group.id).bg}, transparent)` }}>
+            <div style={{ width: 38, height: 38, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 12, fontWeight: 800, background: groupApiTheme(group.id).color, boxShadow: `0 8px 18px ${groupApiTheme(group.id).border}` }}>
+              {groupApiTheme(group.id).mark}
+            </div>
+            <div style={{ minWidth: 0 }}>
+            <span style={{ fontSize: 17, fontWeight: 800 }}>{group.label}</span>
+            <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>{group.desc}</span>
+            </div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 12, padding: 16 }}>
+            {DEPARTMENT_KEY_FIELDS.map(field => {
               const key = `group_api_${group.id}_${field.suffix}`
               const value = keys[key] || ''
               const visible = showMap[key]
+              const meta = groupFieldMeta(field.suffix)
+              const FieldIcon = meta.icon
               return (
-                <div key={key} style={{ border: '1px solid var(--border)', borderRadius: 10, padding: 12, background: 'var(--bg-primary)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-                    <span style={{ fontSize: 12, fontWeight: 700 }}>{field.label}</span>
-                    {value && <span style={{ fontSize: 10, color: '#10b981', fontWeight: 600, background: 'rgba(16,185,129,0.1)', padding: '2px 6px', borderRadius: 6 }}>已配置</span>}
+                <div key={key} style={{ border: `1px solid ${meta.border}`, borderLeft: `4px solid ${meta.color}`, borderRadius: 12, padding: 14, background: `linear-gradient(90deg, ${meta.bg}, var(--bg-primary) 28%)` }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 7 }}>
+                    <span style={{ width: 28, height: 28, borderRadius: 9, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: meta.bg, color: meta.color, border: `1px solid ${meta.border}` }}>
+                      <FieldIcon size={15} />
+                    </span>
+                    <span style={{ fontSize: 15, fontWeight: 800 }}>{field.label}</span>
+                    {value && <span style={{ fontSize: 11, color: '#10b981', fontWeight: 700, background: 'rgba(16,185,129,0.1)', padding: '2px 7px', borderRadius: 7 }}>已配置</span>}
                   </div>
+                  {field.desc && (
+                    <p style={{ margin: '0 0 10px', fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.65 }}>
+                      {field.desc}{' '}
+                      {field.url && field.url !== '#' && (
+                        <a href="#" onClick={event => { event.preventDefault(); openFieldLink(field.url) }}>{field.link || '前往控制台'}</a>
+                      )}
+                    </p>
+                  )}
                   <div style={{ display: 'flex', gap: 8 }}>
                     <div style={{ flex: 1, position: 'relative' }}>
                       <input
-                        type={visible ? 'text' : 'password'}
+                        type={field.isUrl || visible ? 'text' : 'password'}
                         value={value}
                         onChange={event => onUpdateKey(key, event.target.value)}
                         placeholder={field.placeholder}
-                        style={{ width: '100%', paddingRight: 34, fontSize: 12 }}
+                        style={{ width: '100%', paddingRight: field.isUrl ? 12 : 34, fontSize: 14 }}
                       />
                       <button type="button" onClick={() => toggleShow(key)} style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', background: 'none', color: 'var(--text-muted)' }}>
                         {visible ? <EyeOff size={13} /> : <Eye size={13} />}
                       </button>
                     </div>
-                    <button type="button" onClick={() => onSaveKey(key, value)} style={{ padding: '6px 12px', borderRadius: 7, background: 'var(--accent)', color: '#fff', fontWeight: 600, fontSize: 12 }}>
+                    <button type="button" onClick={() => onSaveKey(key, value)} style={{ padding: '7px 15px', borderRadius: 8, background: 'var(--accent)', color: '#fff', fontWeight: 700, fontSize: 13 }}>
                       保存
                     </button>
                   </div>
-                  {value && !visible && <div style={{ marginTop: 6, fontSize: 11, color: 'var(--text-muted)' }}>当前：{maskKey(value)}</div>}
-                  {saved === key && <div style={{ marginTop: 6, color: '#10b981', fontSize: 11 }}>已保存</div>}
-                  {error === key && <div style={{ marginTop: 6, color: '#ef4444', fontSize: 11 }}>保存失败</div>}
+                  {value && !visible && <div style={{ marginTop: 7, fontSize: 12, color: 'var(--text-muted)' }}>当前：{maskKey(value)}</div>}
+                  {saved === key && <div style={{ marginTop: 7, color: '#10b981', fontSize: 12 }}>已保存</div>}
+                  {error === key && <div style={{ marginTop: 7, color: '#ef4444', fontSize: 12 }}>保存失败</div>}
                 </div>
               )
             })}
@@ -193,6 +378,10 @@ function GroupApiKeysPanel({ keys, saved, error, onUpdateKey, onSaveKey }) {
 }
 
 function ApiKeysPanel({ keys, saved, error, onUpdateKey, onSaveKey }) {
+  return (
+    <GroupApiKeysPanel keys={keys} saved={saved} error={error} onUpdateKey={onUpdateKey} onSaveKey={onSaveKey} />
+  )
+
   return (
     <div>
       {API_KEYS.map(section => (

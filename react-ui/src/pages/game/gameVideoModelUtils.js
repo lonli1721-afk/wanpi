@@ -86,7 +86,6 @@ export function cleanImageModelLabel(name) {
 }
 
 export function getImageRefBlockReason(model, refCount, editMode) {
-  if (editMode && refCount !== 1) return '参考图编辑模式当前只支持 1 张原图，请只保留一张参考图后再生成。'
   if (!refCount) return ''
   if (model?.supports_ref_images === false) return `${cleanImageModelLabel(model.name)} 不支持参考图，请切换 Seedream 4.5/5.0。`
   const maxRefs = Number(model?.max_ref_images || 0)
@@ -109,6 +108,8 @@ export function normalizeVideoResolutionForModel(value, model) {
 }
 
 export function getVideoPricePerSecond(model, scene) {
+  const groupOverride = getVideoPriceOverrideForApiGroup(scene?.apiUsageGroup)
+  if (groupOverride) return groupOverride
   const base = Number(model?.price_per_second || 0)
   if (!base) return 0
   if (scene?.videoResolution === '1080p') {
@@ -116,6 +117,15 @@ export function getVideoPricePerSecond(model, scene) {
     if (model?.price_resolution_multiplier_1080p) return base * Number(model.price_resolution_multiplier_1080p)
   }
   return base
+}
+
+export const VIDEO_PRICE_OVERRIDES_BY_API_GROUP = {
+  fa1_project2: 1.65,
+}
+
+export function getVideoPriceOverrideForApiGroup(apiGroupId) {
+  const price = Number(VIDEO_PRICE_OVERRIDES_BY_API_GROUP[String(apiGroupId || '').trim()] || 0)
+  return price > 0 ? price : 0
 }
 
 export function getVideoModelName(model) {

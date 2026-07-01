@@ -323,8 +323,13 @@ def list_active_users_by_team(team: str) -> list:
 
 
 def get_user_full(user_id: str) -> Optional[dict]:
+    lookup = (user_id or "").strip()
+    if not lookup:
+        return None
     conn = _get_auth_db()
-    row = conn.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
+    row = conn.execute("SELECT * FROM users WHERE id=?", (lookup,)).fetchone()
+    if not row:
+        row = conn.execute("SELECT * FROM users WHERE username=?", (lookup,)).fetchone()
     conn.close()
     return dict(row) if row else None
 

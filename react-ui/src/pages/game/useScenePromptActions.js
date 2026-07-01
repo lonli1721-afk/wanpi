@@ -23,7 +23,7 @@ export function useScenePromptActions({
         scene_refs: scene.sceneImages.map(image => image.url),
         reference_video_url: scene.videoMode === 'reference_video' ? scene.refVideoUrl : '',
         advanced_reference_videos: scene.videoMode === 'advanced_video' ? (scene.advancedRefVideos || []).map(video => video.url) : [],
-        model: scene.aiModel || 'gemini-2.5-flash',
+        model: scene.aiModel || 'doubao-seed-2-0-pro-260215',
         language: '中文',
       })
       const prompt = (result.prompt || '').trim()
@@ -47,7 +47,7 @@ export function useScenePromptActions({
         scene_refs: scene.sceneImages.map(image => image.url),
         reference_video_url: scene.videoMode === 'reference_video' ? scene.refVideoUrl : '',
         advanced_reference_videos: scene.videoMode === 'advanced_video' ? (scene.advancedRefVideos || []).map(video => video.url) : [],
-        model: scene.aiModel || 'gemini-2.5-flash',
+        model: scene.aiModel || 'doubao-seed-2-0-pro-260215',
         language: '中文',
       })
       const prompt = (result.prompt || '').trim()
@@ -71,7 +71,7 @@ export function useScenePromptActions({
         scene_refs: scene.sceneImages.map(image => image.url),
         reference_video_url: scene.videoMode === 'reference_video' ? scene.refVideoUrl : '',
         advanced_reference_videos: scene.videoMode === 'advanced_video' ? (scene.advancedRefVideos || []).map(video => video.url) : [],
-        model: scene.aiModel || 'gemini-2.5-flash',
+        model: scene.aiModel || 'doubao-seed-2-0-pro-260215',
       })
       const prompt = (result.prompt || '').trim()
       if (!prompt) throw new Error('模型没有返回润色结果，请稍后重试。')

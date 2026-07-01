@@ -16,7 +16,7 @@ import io
 import time
 from pathlib import Path
 from typing import Optional
-from contextvars import ContextVar
+from contextvars import ContextVar, copy_context
 from urllib.parse import urlencode, urlparse
 
 import aiofiles
@@ -59,11 +59,22 @@ _video_tasks: dict[str, dict] = {}
 cloud_sync = None
 
 API_USAGE_GROUPS = [
-    {"id": "fa1", "label": "发一", "department": "发行事业一部", "description": "发行事业一部（不含混变项目组）"},
     {"id": "fa1_hunbian", "label": "发一混变组", "department": "发行事业一部", "team": "混变项目组"},
-    {"id": "fa2", "label": "发二", "department": "发行事业二部"},
-    {"id": "fa3", "label": "发三", "department": "发行事业三部"},
-    {"id": "market", "label": "市场发展部", "department": "市场发展部"},
+    {"id": "fa1_project1", "label": "发一项目一部", "department": "发行事业一部", "team": "项目一部"},
+    {"id": "fa1_project2", "label": "发一项目二部", "department": "发行事业一部", "team": "项目二部"},
+    {"id": "fa1_project3", "label": "发一项目三部", "department": "发行事业一部", "team": "项目三部"},
+    {"id": "fa1_creative", "label": "发一创意部", "department": "发行事业一部", "team": "创意部"},
+    {"id": "fa1_baoliang", "label": "发一爆量组", "department": "发行事业一部", "team": "爆量组"},
+    {"id": "fa2_zhitou", "label": "发二直投组", "department": "发行事业二部", "team": "直投组"},
+    {"id": "fa2_wechat", "label": "发二微信组", "department": "发行事业二部", "team": "微信组"},
+    {"id": "fa2_tt", "label": "发二TT组", "department": "发行事业二部", "team": "TT组"},
+    {"id": "fa2_research", "label": "发二研发组", "department": "发行事业二部", "team": "研发组"},
+    {"id": "fa2_unassigned", "label": "发二未分团队", "department": "发行事业二部", "team": "未分团队"},
+    {"id": "fa3_baoliang", "label": "发三爆量组", "department": "发行事业三部", "team": "发三爆量组"},
+    {"id": "market_tt", "label": "市场TT组", "department": "市场发展部", "team": "TT组"},
+    {"id": "hr_admin_ssc", "label": "人力行政SSC组", "department": "人力资源部", "team": "行政SSC组"},
+    {"id": "unassigned_zhitou", "label": "未分部门直投组", "department": "未分部门", "team": "直投组"},
+    {"id": "unassigned", "label": "未分部门未分团队", "department": "未分部门", "team": "未分团队"},
 ]
 _API_USAGE_GROUP_IDS = {item["id"] for item in API_USAGE_GROUPS}
 
@@ -87,38 +98,63 @@ def normalize_api_usage_group(value: str) -> str:
 
 def _split_department_and_team(team: str) -> tuple[str, str]:
     value = (team or "").strip()
-    departments = ("发行事业一部", "发行事业二部", "发行事业三部", "市场发展部")
-    for department in departments:
-        if value == department:
-            return department, ""
-        prefix = f"{department}-"
-        if value.startswith(prefix):
-            return department, value[len(prefix):].strip("-")
+    if not value:
+        return "", ""
+    for separator in ("-", "－", "—"):
+        if separator in value:
+            department, team_group = value.split(separator, 1)
+            return department.strip(), team_group.strip()
     return "", value
 
 
 def _group_from_department_team(department: str, team: str) -> str:
     department = (department or "").strip()
     team = (team or "").strip()
+    exact = {
+        ("发行事业一部", "混变项目组"): "fa1_hunbian",
+        ("发行事业一部", "项目一部"): "fa1_project1",
+        ("发行事业一部", "项目二部"): "fa1_project2",
+        ("发行事业一部", "项目三部"): "fa1_project3",
+        ("发行事业一部", "创意部"): "fa1_creative",
+        ("发行事业一部", "爆量组"): "fa1_baoliang",
+        ("发行事业二部", "直投组"): "fa2_zhitou",
+        ("发行事业二部", "微信组"): "fa2_wechat",
+        ("发行事业二部", "TT组"): "fa2_tt",
+        ("发行事业二部", "研发组"): "fa2_research",
+        ("发行事业二部", "未分团队"): "fa2_unassigned",
+        ("发行事业三部", "发三爆量组"): "fa3_baoliang",
+        ("市场发展部", "TT组"): "market_tt",
+        ("人力资源部", "行政SSC组"): "hr_admin_ssc",
+        ("未分部门", "直投组"): "unassigned_zhitou",
+        ("未分部门", "未分团队"): "unassigned",
+    }
+    if (department, team) in exact:
+        return exact[(department, team)]
     if department == "发行事业一部" and "混变" in team:
         return "fa1_hunbian"
-    if department == "发行事业一部":
-        return "fa1"
-    if department == "发行事业二部":
-        return "fa2"
+    if department == "发行事业一部" and "项目二" in team:
+        return "fa1_project2"
+    if department == "发行事业一部" and "项目一" in team:
+        return "fa1_project1"
+    if department == "发行事业一部" and "项目三" in team:
+        return "fa1_project3"
+    if department == "发行事业二部" and "直投" in team:
+        return "fa2_zhitou"
+    if department == "发行事业二部" and "微信" in team:
+        return "fa2_wechat"
+    if department == "发行事业二部" and team.upper().replace(" ", "") in {"TT", "TT组"}:
+        return "fa2_tt"
+    if department == "发行事业二部" and "研发" in team:
+        return "fa2_research"
     if department == "发行事业三部":
-        return "fa3"
+        return "fa3_baoliang"
     if department == "市场发展部":
-        return "market"
+        return "market_tt"
     return ""
 
-
 def current_api_usage_group() -> str:
-    manual = normalize_api_usage_group(db.get_user_setting("game_api_usage_group", ""))
-    if manual:
-        return manual
     user = get_current_user()
-    user_id = user.get("sub") or user.get("id") or ""
+    user_id = user.get("sub") or user.get("id") or user.get("username") or ""
     full = {}
     if user_id:
         try:
@@ -127,22 +163,120 @@ def current_api_usage_group() -> str:
             logger.debug("Failed to resolve current user for API group", exc_info=True)
     team = (full.get("team") or user.get("team") or "").strip()
     department, team_group = _split_department_and_team(team)
+    if not department:
+        department = (full.get("department") or user.get("department") or "").strip()
     return _group_from_department_team(department, team_group)
 
 
+def current_api_usage_group_info() -> dict:
+    group_id = current_api_usage_group()
+    for item in API_USAGE_GROUPS:
+        if item["id"] == group_id:
+            return dict(item)
+
+    user = get_current_user()
+    user_id = user.get("sub") or user.get("id") or user.get("username") or ""
+    full = {}
+    if user_id:
+        try:
+            full = auth.get_user_full(user_id) or {}
+        except Exception:
+            logger.debug("Failed to resolve current user for API group info", exc_info=True)
+    team = (full.get("team") or user.get("team") or "").strip()
+    department = (full.get("department") or user.get("department") or "").strip()
+    return {
+        "id": "",
+        "label": team or department or "未分组",
+        "department": department,
+        "team": team,
+    }
+
+
+def current_api_usage_group_label() -> str:
+    info = current_api_usage_group_info()
+    return (info.get("label") or "未分组").strip()
+
+
+def missing_group_api_key_message(name: str) -> str:
+    key_name = (name or "相关 API Key").strip()
+    group_info = current_api_usage_group_info()
+    group_id = (group_info.get("id") or "").strip()
+    group_label = (group_info.get("label") or "未分组").strip()
+    if not group_id:
+        return (
+            f"当前账号未归属可用 API 分组，无法使用 {key_name}。"
+            "请先在成员管理里确认该成员的 team 字段是否为“部门-团队/组”格式。"
+        )
+    return f"所在团队未配置相关的 API Key：{key_name}（当前团队：{group_label}）。请联系管理员在该团队分组下补齐后再使用。"
+
+
+def missing_group_api_key_http(name: str) -> HTTPException:
+    return HTTPException(status_code=400, detail=missing_group_api_key_message(name))
+
+
+def _group_api_key_prefixes(group_id: str) -> list[str]:
+    legacy_aliases = {
+        "fa1_hunbian": ["fa1_hunbian", "fa1"],
+        "fa1_project1": ["fa1_project1", "fa1"],
+        "fa1_project2": ["fa1_project2", "fa1"],
+        "fa1_project3": ["fa1_project3", "fa1"],
+        "fa1_creative": ["fa1_creative", "fa1"],
+        "fa1_baoliang": ["fa1_baoliang", "fa1"],
+        "fa2_zhitou": ["fa2_zhitou", "fa2"],
+        "fa2_wechat": ["fa2_wechat", "fa2"],
+        "fa2_tt": ["fa2_tt", "fa2"],
+        "fa2_research": ["fa2_research", "fa2"],
+        "fa2_unassigned": ["fa2_unassigned", "fa2"],
+        "fa3_baoliang": ["fa3_baoliang", "fa3"],
+        "market_tt": ["market_tt", "market"],
+    }
+    ordered = []
+    seen = set()
+    for prefix in legacy_aliases.get(group_id, [group_id]):
+        if prefix and prefix not in seen:
+            seen.add(prefix)
+            ordered.append(prefix)
+    return ordered
+
+
 def group_api_setting_keys(name: str) -> list[str]:
-    if (name or "").strip() not in {"ark_api_key", "jimeng_api_key", "game_ark_api_key", "game_jimeng_api_key"}:
-        return []
     group_id = current_api_usage_group()
     if not group_id:
         return []
     clean = (name or "").strip()
-    if not clean:
+    if not clean or not re.match(r"^[A-Za-z0-9_]+$", clean):
         return []
-    keys = [f"group_api_{group_id}_{clean}"]
-    if not clean.startswith("game_"):
-        keys.insert(0, f"group_api_{group_id}_game_{clean}")
-    return keys
+    keys = []
+    for prefix in _group_api_key_prefixes(group_id):
+        if clean.startswith("game_"):
+            keys.append(f"group_api_{prefix}_{clean}")
+            keys.append(f"group_api_{prefix}_{clean[5:]}")
+        else:
+            keys.append(f"group_api_{prefix}_game_{clean}")
+            keys.append(f"group_api_{prefix}_{clean}")
+
+    aliases = {
+        "ark_api_key": ["jimeng_api_key"],
+        "jimeng_api_key": ["ark_api_key"],
+        "game_ark_api_key": ["game_jimeng_api_key", "jimeng_api_key"],
+        "game_jimeng_api_key": ["game_ark_api_key", "ark_api_key"],
+    }
+    for alias in aliases.get(clean, []):
+        for prefix in _group_api_key_prefixes(group_id):
+            if alias.startswith("game_"):
+                keys.append(f"group_api_{prefix}_{alias}")
+                keys.append(f"group_api_{prefix}_{alias[5:]}")
+            else:
+                keys.append(f"group_api_{prefix}_game_{alias}")
+                keys.append(f"group_api_{prefix}_{alias}")
+
+    ordered = []
+    seen = set()
+    for key in keys:
+        if key not in seen:
+            seen.add(key)
+            ordered.append(key)
+    return ordered
 
 
 def get_group_api_key(name: str) -> str:
@@ -154,7 +288,20 @@ def get_group_api_key(name: str) -> str:
 
 
 def get_group_api_key_pool(name: str) -> list[str]:
-    return []
+    try:
+        from ai_service import split_api_keys
+    except Exception:
+        def split_api_keys(value: str) -> list[str]:
+            return [item.strip() for item in re.split(r"[\n,;]+", value or "") if item.strip()]
+
+    keys: list[str] = []
+    seen = set()
+    for key_name in group_api_setting_keys(name):
+        for key in split_api_keys(settings_manager.get(key_name, "")):
+            if key and key not in seen:
+                seen.add(key)
+                keys.append(key)
+    return keys
 
 # Shared HTTP client (connection pooling, avoids repeated SSL context creation)
 http_client: Optional[httpx.AsyncClient] = None
@@ -482,6 +629,37 @@ async def llm_chat(prompt: str, model: str, conversation_id: str = "") -> str:
 
 # ── 权限 ─────────────────────────────────────────────
 
+async def llm_chat(prompt: str, model: str, conversation_id: str = "") -> str:
+    if is_openai_model(model):
+        key = get_group_api_key("openai_api_key")
+        if not key:
+            raise Exception(missing_group_api_key_message("OpenAI API Key"))
+
+        from openai_service import OpenAIService
+
+        proxy = get_proxy_url()
+        base_url = get_group_api_key("openai_base_url")
+        if proxy:
+            base_url = f"{proxy}/openai/v1"
+        elif not base_url:
+            base_url = "https://open-api.mincode.cn/v1"
+        service = OpenAIService(api_key=key, base_url=base_url)
+        return await service.chat(prompt, model=model)
+
+    keys = get_group_api_key_pool("gemini_api_key")
+    if not keys:
+        raise Exception(missing_group_api_key_message("Gemini API Key"))
+
+    from ai_service import AIService
+
+    proxy = get_proxy_url()
+    gemini_proxy = f"{proxy}/gemini" if proxy else ""
+    service = AIService(api_key=keys[0], api_keys=keys, proxy_base_url=gemini_proxy)
+    cid = conversation_id or f"chat_{uuid.uuid4().hex[:6]}"
+    result = await service.chat(prompt, cid, model)
+    return result.get("response", "")
+
+
 def require_admin(request: Request):
     if os.environ.get("AUTH_ENABLED", "true").lower() not in ("true", "1", "yes"):
         return
@@ -491,7 +669,13 @@ def require_admin(request: Request):
 
 
 def get_proxy_url() -> str:
-    return (os.environ.get("HK_PROXY_URL", "") or settings_manager.get("api_proxy_url", "")).rstrip("/")
+    common_proxy_url = (settings_manager.get("api_proxy_url", "") or os.environ.get("HK_PROXY_URL", "")).strip()
+    if common_proxy_url:
+        return common_proxy_url.rstrip("/")
+    group_proxy_url = get_group_api_key("api_proxy_url")
+    if group_proxy_url:
+        return group_proxy_url.rstrip("/")
+    return ""
 
 
 def build_signed_public_file_url(url: str, expires_in_seconds: int = 3600) -> str:
@@ -547,9 +731,13 @@ def extract_json(text: str) -> dict | None:
 
 def keepalive_response(async_fn):
     import asyncio
+    request_context = copy_context()
 
     async def _stream():
-        task = asyncio.ensure_future(async_fn())
+        try:
+            task = asyncio.create_task(async_fn(), context=request_context)
+        except TypeError:
+            task = request_context.run(lambda: asyncio.ensure_future(async_fn()))
         try:
             while not task.done():
                 yield b" "
