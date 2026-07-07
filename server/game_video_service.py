@@ -11,6 +11,8 @@ import json
 import logging
 import httpx
 
+from video_model_registry import normalize_video_model_id
+
 logger = logging.getLogger("game_video")
 
 BASE_URL = "https://ark.cn-beijing.volces.com/api/v3"
@@ -18,6 +20,7 @@ BASE_URL = "https://ark.cn-beijing.volces.com/api/v3"
 VIDEO_MODELS = {
     "seedance-1.5-pro":  "doubao-seedance-1-5-pro-251215",
     "seedance-2.0":      "doubao-seedance-2-0-260128",
+    "seedance-1.0-pro-fast": "doubao-seedance-1-0-pro-fast-251015",
     "seedance-fast":     "doubao-seedance-1-0-pro-fast-251015",
     "dream-actor":       "jimeng_dream_actor_m1_gen_video_cv",
 }
@@ -25,12 +28,14 @@ VIDEO_MODELS = {
 _DURATION_LIMITS = {
     "seedance-2.0": (4, 15),
     "seedance-1.5-pro": (4, 10),
-    "seedance-fast": (4, 5),
+    "seedance-1.0-pro-fast": (4, 10),
+    "seedance-fast": (4, 10),
 }
 
 _RESOLUTION_LIMITS = {
     "seedance-2.0": {"720p", "1080p"},
     "seedance-1.5-pro": {"720p"},
+    "seedance-1.0-pro-fast": {"720p"},
     "seedance-fast": {"720p"},
 }
 

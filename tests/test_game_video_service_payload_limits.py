@@ -60,6 +60,24 @@ class GameVideoServicePayloadLimitTests(unittest.TestCase):
         ref_image_count = sum(1 for item in content if item.get("role") == "reference_image")
         self.assertEqual(ref_image_count, 9)
 
+    def test_seedance_10_pro_fast_sends_ten_second_duration(self):
+        with patch("game_video_service.httpx.AsyncClient", _FakeAsyncClient):
+            result = asyncio.run(
+                GameJimengService("test-key").generate_video(
+                    prompt="tiny smoke",
+                    model="seedance-1.0-pro-fast",
+                    ratio="9:16",
+                    duration=10,
+                    resolution="720p",
+                )
+            )
+
+        self.assertEqual(result["task_id"], "fake-task")
+        payload = _FakeAsyncClient.payloads[0]
+        self.assertEqual(payload["model"], "doubao-seedance-1-0-pro-fast-251015")
+        self.assertEqual(payload["duration"], 10)
+        self.assertEqual(payload["resolution"], "720p")
+
 
 if __name__ == "__main__":
     unittest.main()
