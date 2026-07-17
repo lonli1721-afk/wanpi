@@ -1,5 +1,5 @@
 import { useCallback } from 'react'
-import { absoluteMediaUrl } from './gameVideoPageHelpers'
+import { absoluteMediaUrl, copyTextToClipboard } from './gameVideoPageHelpers'
 import {
   getImageAspectOption,
   getImageRefBlockReason,
@@ -146,7 +146,7 @@ export function useStandaloneImageGenerationActions({
   }, [imgGenRefImages, persistStandaloneImageState, setImgGenRefImages])
 
   const handleCopyStandaloneImageLink = useCallback((url) => {
-    void navigator.clipboard.writeText(absoluteMediaUrl(url))
+    void copyTextToClipboard(absoluteMediaUrl(url))
   }, [])
 
   const handleStandaloneGenImage = useCallback(async () => {
@@ -174,6 +174,7 @@ export function useStandaloneImageGenerationActions({
         reference_urls: imgGenRefImages.map(i => i.url),
         edit_mode: isGeneratedEdit,
         batch_count: Math.max(1, Math.min(4, Number(imgGenBatchCount) || 1)),
+        image_count: Math.max(1, Math.min(4, Number(imgGenBatchCount) || 1)),
         image_quality: imageQuality,
         prompt_optimize_mode: 'standard',
       })
@@ -198,6 +199,7 @@ export function useStandaloneImageGenerationActions({
         setImgGenHistory(nextHistory)
         persistStandaloneImageState({ imgGenHistory: nextHistory, imgGenPrompt, imgGenBatchCount: Math.max(1, Math.min(4, Number(imgGenBatchCount) || 1)) })
       }
+      if (d.warning) alert(d.warning)
     } catch (e) {
       alert('生成失败: ' + getFriendlyImageError(e))
     } finally {

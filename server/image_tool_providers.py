@@ -76,14 +76,14 @@ class ImageToolProviderRegistry:
         raise RuntimeError(deps.missing_group_api_key_message("Gemini Key"))
 
     def openai(self):
-        key = self._user_key("openai_api_key")
+        key = self._user_key("openai_api_key") or (deps.settings_manager.get("openai_api_key", "") or "").strip()
         if not key:
             raise RuntimeError(deps.missing_group_api_key_message("OpenAI Key"))
 
         from openai_service import OpenAIService
 
         proxy = deps.get_proxy_url()
-        base_url = self._user_key("openai_base_url")
+        base_url = self._user_key("openai_base_url") or (deps.settings_manager.get("openai_base_url", "") or "").strip()
         if proxy:
             base_url = f"{proxy}/openai/v1"
         elif not base_url:

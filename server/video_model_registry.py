@@ -3,14 +3,17 @@ from __future__ import annotations
 
 SEEDANCE_20_MODEL_ALIASES = {
     "seedance-2.0-first-frame",
-    "seedance-2.0-fast",
     "seedance-2.0-mini",
+}
+VIDEO_MODEL_ALIASES = {
+    "seedance-1.0-fast": "seedance-1.0-pro-fast",
+    **{model_id: "seedance-2.0" for model_id in SEEDANCE_20_MODEL_ALIASES},
 }
 
 
 def normalize_video_model_id(model: str) -> str:
     model_id = str(model or "").strip()
-    return "seedance-2.0" if model_id in SEEDANCE_20_MODEL_ALIASES else model_id
+    return VIDEO_MODEL_ALIASES.get(model_id, model_id)
 
 
 def get_all_video_model_specs() -> list[dict]:
@@ -24,6 +27,13 @@ def get_all_video_model_specs() -> list[dict]:
          "supported_modes": ["generate", "reference_video", "advanced_video", "motion_transfer"],
          "price_per_second": 1.0, "price_unit": "CNY", "price_resolution_multiplier_1080p": 2.25,
          "price_note": "官方按输出视频像素、帧率、时长折算 token 计费；1080P 约为 720P 的 2.25 倍"},
+        {"id": "seedance-2.0-fast", "name": "Seedance 2.0 Fast", "provider": "jimeng",
+         "supports_ref_video": True, "supports_ref_images": True, "min_duration": 4, "max_duration": 10,
+         "max_ref_images": 9, "max_ref_videos": 3, "ref_video_duration_limit": 15.2,
+         "supported_resolutions": ["720p"], "default_resolution": "720p",
+         "limit_note": "Seedance 2.0 Fast: 4-10s, 720P, reference video total must be within 15.2s.",
+         "supported_modes": ["generate", "reference_video", "advanced_video"],
+         "price_per_second": 0.8, "price_unit": "CNY"},
         {"id": "seedance-1.5-pro", "name": "Seedance 1.5 Pro", "provider": "jimeng",
          "supports_ref_video": False, "supports_ref_images": True, "min_duration": 4, "max_duration": 12,
          "max_ref_images": 2,
@@ -31,11 +41,11 @@ def get_all_video_model_specs() -> list[dict]:
          "limit_note": "生成时长 4-12 秒；支持 1 张首帧图或 2 张首尾帧图；不支持参考视频/普通多参考图；当前仅开放 720P",
          "supported_modes": ["generate"],
          "price_per_second": 0.3, "price_unit": "CNY"},
-        {"id": "seedance-1.0-pro-fast", "name": "seedance-1.0-pro-fast", "provider": "jimeng",
+        {"id": "seedance-1.0-pro-fast", "name": "Seedance 1.0 Fast", "provider": "jimeng",
          "supports_ref_video": False, "supports_ref_images": True, "min_duration": 4, "max_duration": 10,
          "max_ref_images": 1,
          "supported_resolutions": ["720p"], "default_resolution": "720p",
-         "limit_note": "seedance-1.0-pro-fast: 4-10s, 720P, supports one first-frame image.",
+         "limit_note": "Seedance 1.0 Fast: 4-10s, 720P, supports one first-frame image.",
          "supported_modes": ["generate"],
          "price_per_second": 0.4, "price_unit": "CNY"},
         {"id": "viduq3-pro", "name": "VIDU Q3 Pro", "provider": "vidu",

@@ -3,7 +3,7 @@ import { Clock, Loader2, Plus, Sparkles, Trash2, Upload, X } from 'lucide-react'
 import { api } from '../../../services/api'
 import ImageGenerationPanel from '../../game/components/ImageGenerationPanel'
 import { DEFAULT_IMAGE_ASPECT_RATIO, IMAGE_ASPECT_OPTIONS, IMAGE_QUALITY_OPTIONS } from '../../game/gameVideoConstants'
-import { absoluteMediaUrl, logGamePageError, mediaUrl } from '../../game/gameVideoPageHelpers'
+import { absoluteMediaUrl, copyTextToClipboard, logGamePageError, mediaUrl } from '../../game/gameVideoPageHelpers'
 import { cleanImageModelLabel, getImageAspectOption, getImageQualityIds, getImageRefBlockReason, normalizeImageQualityForModel } from '../../game/gameVideoModelUtils'
 import { useStandaloneImageGenerationActions } from '../../game/useStandaloneImageGenerationActions'
 import { FALLBACK_IMAGE_MODELS } from '../imageModelFallbacks'
@@ -138,6 +138,16 @@ export function StandaloneImagePanel({ imageModels: rawImageModels, modelsLoaded
   }, [])
 
   const postImageGeneration = useCallback((body) => api.post('/api/game/generate_image', body), [])
+
+  const copyStandalonePrompt = useCallback(async (text) => {
+    const value = String(text || '').trim()
+    if (!value) {
+      alert('这张图没有记录提示词。')
+      return
+    }
+    const copied = await copyTextToClipboard(value)
+    if (!copied) alert('复制失败，请手动选中提示词复制。')
+  }, [])
 
   const postPromptRefresh = useCallback((prompt, model, target = 'image') => (
     api.post('/api/game/refresh_prompt', {
@@ -314,6 +324,7 @@ export function StandaloneImagePanel({ imageModels: rawImageModels, modelsLoaded
         reference_urls: refImages.map(item => item.url),
         edit_mode: isGeneratedEdit,
         batch_count: Math.max(1, Math.min(4, Number(scene.batchCount || 1))),
+        image_count: Math.max(1, Math.min(4, Number(scene.batchCount || 1))),
         image_quality: imageQuality,
         prompt_optimize_mode: 'standard',
       })
@@ -346,6 +357,7 @@ export function StandaloneImagePanel({ imageModels: rawImageModels, modelsLoaded
           return nextHistory
         })
       }
+      if (d.warning) alert(d.warning)
     } catch (error) {
       alert(`场景${scene.idx}生成失败：${friendlyImageError(error)}`)
       persistExtraScenes(prev => prev.map(item => (item.id === scene.id ? { ...item, loading: false } : item)))
@@ -372,6 +384,13 @@ export function StandaloneImagePanel({ imageModels: rawImageModels, modelsLoaded
   const displayedExtraScenes = useMemo(() => [...extraScenes].reverse(), [extraScenes])
   const imageRecords = useMemo(() => imgGenHistory.map((item, index) => ({ ...item, sceneIdx: item.sceneIdx || 1, historyIndex: index })), [imgGenHistory])
   const sceneOneRecords = useMemo(() => imageRecords.filter(item => item.sceneIdx === 1), [imageRecords])
+  const promptForRecord = useCallback((img) => {
+    const direct = String(img?.prompt || '').trim()
+    if (direct) return direct
+    const sceneIdx = Number(img?.sceneIdx || 1)
+    if (sceneIdx === 1) return imgGenPrompt
+    return extraScenes.find(scene => Number(scene.idx) === sceneIdx)?.prompt || ''
+  }, [extraScenes, imgGenPrompt])
   const processingRecords = useMemo(() => {
     const records = []
     for (const scene of displayedExtraScenes) {
@@ -417,10 +436,10 @@ export function StandaloneImagePanel({ imageModels: rawImageModels, modelsLoaded
                     <div style={{ fontSize: 10, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 5 }}>{img.prompt || '图片生成结果'}</div>
                     <div style={{ display: 'flex', gap: 6 }}>
                       <a href={mediaUrl(img.url)} download target="_blank" rel="noreferrer" style={{ flex: 1, padding: '4px 0', borderRadius: 6, fontSize: 10, fontWeight: 700, background: 'rgba(16,185,129,0.1)', color: '#10b981', border: '1px solid rgba(16,185,129,0.2)', textAlign: 'center', textDecoration: 'none' }}>下载</a>
-                      <button type="button" onClick={() => { void navigator.clipboard.writeText(absoluteMediaUrl(img.url)); handleCopyStandaloneImageLink(img.url) }} style={{ flex: 1, padding: '4px 0', borderRadius: 6, fontSize: 10, fontWeight: 700, background: 'rgba(59,130,246,0.1)', color: '#3b82f6', border: '1px solid rgba(59,130,246,0.2)' }}>复制</button>
+                      <button type="button" onClick={() => handleCopyStandaloneImageLink(img.url)} style={{ flex: 1, padding: '4px 0', borderRadius: 6, fontSize: 10, fontWeight: 700, background: 'rgba(59,130,246,0.1)', color: '#3b82f6', border: '1px solid rgba(59,130,246,0.2)' }}>复制</button>
                     </div>
                     <button type="button" onClick={() => editGeneratedImageInSceneOne(img)} style={{ width: '100%', marginTop: 6, padding: '5px 0', borderRadius: 6, fontSize: 10, fontWeight: 800, background: 'rgba(59,130,246,0.1)', color: '#3b82f6', border: '1px solid rgba(59,130,246,0.22)' }}>编辑这张图</button>
-                    <button type="button" onClick={() => navigator.clipboard.writeText(img.prompt || '')} style={{ width: '100%', marginTop: 6, padding: '5px 0', borderRadius: 6, fontSize: 10, fontWeight: 800, background: 'rgba(139,92,246,0.1)', color: 'var(--accent)', border: '1px solid rgba(139,92,246,0.22)' }}>复制提示词</button>
+                    <button type="button" onClick={() => copyStandalonePrompt(promptForRecord(img))} style={{ width: '100%', marginTop: 6, padding: '5px 0', borderRadius: 6, fontSize: 10, fontWeight: 800, background: 'rgba(139,92,246,0.1)', color: 'var(--accent)', border: '1px solid rgba(139,92,246,0.22)' }}>复制提示词</button>
                   </div>
                 </div>
               ))}
@@ -465,7 +484,7 @@ export function StandaloneImagePanel({ imageModels: rawImageModels, modelsLoaded
         onGenerate={handleStandaloneGenImage}
         onRemoveHistoryImage={removeStandaloneHistoryImage}
         onCopyImageLink={(url) => {
-          void navigator.clipboard.writeText(absoluteMediaUrl(url))
+          void copyTextToClipboard(absoluteMediaUrl(url))
           handleCopyStandaloneImageLink(url)
         }}
         onEditHistoryImage={editGeneratedImageInSceneOne}
@@ -523,6 +542,7 @@ export function StandaloneImagePanel({ imageModels: rawImageModels, modelsLoaded
           const sceneModel = imageModels.find(item => item.id === scene.model)
           const sceneQualityIds = getImageQualityIds(sceneModel)
           const sceneQuality = normalizeImageQualityForModel(scene.quality || '2K', sceneModel)
+          const sceneShowQualityControl = !(sceneQualityIds.length === 1 && sceneQualityIds[0] === 'low')
           const refs = Array.isArray(scene.refImages) ? scene.refImages : []
           const sceneHistory = Array.isArray(scene.history) ? scene.history : []
           return (
@@ -572,7 +592,7 @@ export function StandaloneImagePanel({ imageModels: rawImageModels, modelsLoaded
                 >
                   {IMAGE_ASPECT_OPTIONS.map(option => <option key={option.id} value={option.id}>比例 {option.label}</option>)}
                 </select>
-                <select
+                {sceneShowQualityControl && <select
                   value={sceneQuality}
                   onChange={event => updateExtraScene(scene.id, { quality: normalizeImageQualityForModel(event.target.value, sceneModel) })}
                   style={{ padding: '6px 9px', borderRadius: 8, background: 'var(--bg-primary)', border: '1px solid var(--border)', color: 'var(--text-secondary)', fontSize: 12, fontWeight: 700 }}
@@ -580,7 +600,7 @@ export function StandaloneImagePanel({ imageModels: rawImageModels, modelsLoaded
                   {IMAGE_QUALITY_OPTIONS
                     .filter(option => sceneQualityIds.includes(option.id))
                     .map(option => <option key={option.id} value={option.id}>清晰度 {option.label}</option>)}
-                </select>
+                </select>}
                 <select
                   value={Math.max(1, Math.min(4, Number(scene.batchCount || 1)))}
                   onChange={event => updateExtraScene(scene.id, { batchCount: Number(event.target.value) })}
@@ -654,10 +674,10 @@ export function StandaloneImagePanel({ imageModels: rawImageModels, modelsLoaded
                         <div style={{ fontSize: 11, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 6 }}>{img.prompt || `场景 ${scene.idx} 生成结果`}</div>
                         <div style={{ display: 'flex', gap: 6 }}>
                           <a href={mediaUrl(img.url)} download target="_blank" rel="noreferrer" style={{ flex: 1, padding: '5px 0', borderRadius: 7, fontSize: 11, fontWeight: 800, background: 'rgba(16,185,129,0.1)', color: '#10b981', border: '1px solid rgba(16,185,129,0.2)', textAlign: 'center', textDecoration: 'none' }}>下载</a>
-                          <button type="button" onClick={() => { void navigator.clipboard.writeText(absoluteMediaUrl(img.url)); handleCopyStandaloneImageLink(img.url) }} style={{ flex: 1, padding: '5px 0', borderRadius: 7, fontSize: 11, fontWeight: 800, background: 'rgba(59,130,246,0.1)', color: '#3b82f6', border: '1px solid rgba(59,130,246,0.2)' }}>复制链接</button>
+                          <button type="button" onClick={() => handleCopyStandaloneImageLink(img.url)} style={{ flex: 1, padding: '5px 0', borderRadius: 7, fontSize: 11, fontWeight: 800, background: 'rgba(59,130,246,0.1)', color: '#3b82f6', border: '1px solid rgba(59,130,246,0.2)' }}>复制链接</button>
                         </div>
                         <button type="button" onClick={() => editGeneratedImageInExtraScene(scene.id, img)} style={{ width: '100%', marginTop: 6, padding: '5px 0', borderRadius: 7, fontSize: 11, fontWeight: 800, background: 'rgba(59,130,246,0.1)', color: '#3b82f6', border: '1px solid rgba(59,130,246,0.22)' }}>编辑这张图</button>
-                        <button type="button" onClick={() => navigator.clipboard.writeText(img.prompt || '')} style={{ width: '100%', marginTop: 6, padding: '5px 0', borderRadius: 7, fontSize: 11, fontWeight: 800, background: 'rgba(139,92,246,0.1)', color: 'var(--accent)', border: '1px solid rgba(139,92,246,0.22)' }}>复制提示词</button>
+                        <button type="button" onClick={() => copyStandalonePrompt(img.prompt || scene.prompt)} style={{ width: '100%', marginTop: 6, padding: '5px 0', borderRadius: 7, fontSize: 11, fontWeight: 800, background: 'rgba(139,92,246,0.1)', color: 'var(--accent)', border: '1px solid rgba(139,92,246,0.22)' }}>复制提示词</button>
                       </div>
                     </div>
                   ))}

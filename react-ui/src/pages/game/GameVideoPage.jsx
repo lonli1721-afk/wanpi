@@ -22,6 +22,7 @@ import {
   VIDEO_RESOLUTION_OPTIONS,
 } from './gameVideoConstants'
 import { FALLBACK_IMAGE_MODELS } from '../image-toolbox/imageModelFallbacks'
+import { filterImageModelsForCurrentUser } from '../image-toolbox/imageModelAccess'
 import {
   cleanImageModelLabel,
   getImageQualityIds,
@@ -94,8 +95,8 @@ export default function GameVideoPage() {
   const [models, setModels] = useState([])
   const [imageModels, setImageModels] = useState(() => (
     Array.isArray(cachedBootstrap.imageModels) && cachedBootstrap.imageModels.length
-      ? cachedBootstrap.imageModels
-      : FALLBACK_IMAGE_MODELS
+      ? filterImageModelsForCurrentUser(cachedBootstrap.imageModels)
+      : filterImageModelsForCurrentUser(FALLBACK_IMAGE_MODELS)
   ))
 
   const [genScenes, setGenScenes] = useState([])

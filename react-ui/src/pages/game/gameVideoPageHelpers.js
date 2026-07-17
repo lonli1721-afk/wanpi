@@ -44,6 +44,39 @@ export function absoluteMediaUrl(path) {
   return `${window.location.origin}${relative.startsWith('/') ? relative : `/${relative}`}`
 }
 
+export async function copyTextToClipboard(text) {
+  const value = typeof text === 'string' ? text : String(text || '')
+  if (!value) return false
+  if (navigator?.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(value)
+      return true
+    } catch (error) {
+      void error
+    }
+  }
+  if (typeof document === 'undefined' || !document.body) return false
+  const textarea = document.createElement('textarea')
+  textarea.value = value
+  textarea.setAttribute('readonly', '')
+  textarea.style.position = 'fixed'
+  textarea.style.left = '-9999px'
+  textarea.style.top = '0'
+  textarea.style.opacity = '0'
+  document.body.appendChild(textarea)
+  textarea.focus()
+  textarea.select()
+  textarea.setSelectionRange(0, value.length)
+  try {
+    return document.execCommand('copy')
+  } catch (error) {
+    void error
+    return false
+  } finally {
+    document.body.removeChild(textarea)
+  }
+}
+
 export function normalizeMediaItem(item) {
   if (typeof item === 'string') return item ? { url: item, name: '' } : null
   if (!item || typeof item !== 'object' || typeof item.url !== 'string' || !item.url) return null

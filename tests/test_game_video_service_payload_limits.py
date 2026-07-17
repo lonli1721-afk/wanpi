@@ -77,6 +77,7 @@ class GameVideoServicePayloadLimitTests(unittest.TestCase):
         self.assertEqual(payload["model"], "doubao-seedance-1-0-pro-fast-251015")
         self.assertEqual(payload["duration"], 10)
         self.assertEqual(payload["resolution"], "720p")
+        self.assertEqual(result["duration"], 10)
 
 
 if __name__ == "__main__":

@@ -209,6 +209,24 @@ def _ensure_openai_image2_beta_access(request: Request | None = None) -> None:
         raise HTTPException(status_code=403, detail="GPT Image 2 当前处于成本内测，仅管理员和内测名单用户可使用。")
 
 
+MULERUN_IMAGE_ALLOWED_GROUPS = {"fa2_zhitou", "fa2_wechat"}
+
+
+def _can_use_mulerun_image(request: Request | None = None) -> bool:
+    user = _current_request_user(request)
+    if str(user.get("role") or "").strip().lower() == "admin":
+        return True
+    return deps.current_api_usage_group() in MULERUN_IMAGE_ALLOWED_GROUPS
+
+
+def _ensure_mulerun_image_access(request: Request | None = None) -> None:
+    if not _can_use_mulerun_image(request):
+        raise HTTPException(
+            status_code=403,
+            detail="GPT Image 2（MuleRun）仅限发行事业二部-微信组和发行事业二部-直投组成员使用。",
+        )
+
+
 def _env_key_pool(name: str) -> list[str]:
     if name == "gemini_api_key":
         candidates = ["GAME_GEMINI_API_KEYS", "GEMINI_API_KEYS", "GAME_GEMINI_API_KEY", "GEMINI_API_KEY"]
@@ -366,19 +384,38 @@ def _ai():
 
 def _openai():
     """Per-user OpenAI-compatible service with the same proxy/base-url rules as the global service."""
-    k = _user_key("openai_api_key")
+    k = _user_key("openai_api_key") or (deps.settings_manager.get("openai_api_key", "") or "").strip()
     if not k:
         raise _missing_group_api_key("OpenAI Key")
 
     from openai_service import OpenAIService
 
     proxy = deps.get_proxy_url()
-    base_url = _user_key("openai_base_url")
+    base_url = _user_key("openai_base_url") or (deps.settings_manager.get("openai_base_url", "") or "").strip()
     if proxy:
         base_url = f"{proxy}/openai/v1"
     elif not base_url:
         base_url = "https://open-api.mincode.cn/v1"
     return OpenAIService(api_key=k, base_url=base_url)
+
+
+def _mulerun_image():
+    """Per-group MuleRun image service. API mode is preferred; CLI remains a local fallback."""
+    from mulerun_service import MuleRunImageService, mulerun_api_configured, mulerun_image_available
+
+    api_base_url = (
+        _user_key("mulerun_api_base_url")
+        or (deps.settings_manager.get("mulerun_api_base_url", "") or "").strip()
+        or _env_key("mulerun_api_base_url")
+    )
+    api_key = _user_key("mulerun_api_key") or _env_key("mulerun_api_key")
+    if mulerun_api_configured(api_base_url, api_key):
+        return MuleRunImageService(api_base_url=api_base_url, api_key=api_key)
+
+    cli = _env_key("mulerun_cli")
+    if not mulerun_image_available(cli):
+        return None
+    return MuleRunImageService(cli=cli)
 
 
 def _is_ark_multimodal_model(model: str) -> bool:
@@ -1034,6 +1071,8 @@ class GenerateAssetImageRequest(BaseModel):
     image_quality: str = "2K"
     prompt_optimize_mode: str = "standard"
     output_format: str = ""
+    image_count: int = 1
+    batch_count: int = 1
     enable_web_search: bool = False
 
 
@@ -1090,6 +1129,32 @@ async def _resolve_happyhorse_image_reference(url: str) -> str:
         limit_label="HappyHorse 参考图",
         cache_prefix="happyhorse_ref",
     )
+
+
+async def _resolve_mulerun_image_reference(url: str) -> str:
+    local_path = deps.get_local_file_path_from_url(url)
+    if not local_path and "/public-files/" in url:
+        from urllib.parse import unquote, urlparse
+
+        parsed = urlparse(url)
+        filename = unquote(parsed.path.rsplit("/public-files/", 1)[-1]).strip()
+        if filename and filename not in (".", "..") and "/" not in filename and "\\" not in filename:
+            local_path = deps.find_local_file_path(filename) or deps.find_local_file_path(filename, include_all_user_dirs=True)
+    if local_path:
+        return str(local_path.resolve())
+
+    if url.startswith("data:image"):
+        return url
+
+    import httpx as _httpx
+
+    async with _httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+        response = await client.get(url)
+        response.raise_for_status()
+        mime = response.headers.get("content-type", "").split(";", 1)[0].strip()
+        if not mime.startswith("image/"):
+            mime = "image/png"
+        return f"data:{mime};base64,{base64.b64encode(response.content).decode()}"
 
 
 async def _resolve_provider_image_reference(url: str, provider: str) -> str:
@@ -1172,6 +1237,7 @@ async def generate_asset_image(req: GenerateAssetImageRequest, request: Request)
             if req.reference_urls:
                 raise HTTPException(400, "OpenAI 图片生成当前先只支持文字生图，请先移除参考图后再试。")
             size = f"{image_width}x{image_height}"
+            requested_count = req.image_count or req.batch_count or 1
             result = await _provider_call(
                 "openai_image",
                 "generate_image",
@@ -1180,10 +1246,37 @@ async def generate_asset_image(req: GenerateAssetImageRequest, request: Request)
                     model=normalize_video_model_id(req.model),
                     size=size,
                     reference_images=ref_images if ref_images else None,
+                    image_quality=req.image_quality,
+                    image_count=requested_count,
                 ),
             )
             if any(img.get("data") for img in result.get("images", [])):
                 result = await asyncio.to_thread(deps.save_gemini_image_result, result)
+        elif req.provider == "mulerun_image":
+            _ensure_mulerun_image_access(request)
+            svc = _mulerun_image()
+            if not svc:
+                raise Exception("MuleRun API is not configured for the current group. Configure MuleRun API Base URL and MuleRun API Key, or install/login MuleRun CLI for local fallback.")
+            ref_urls = []
+            for url in req.reference_urls:
+                ref_urls.append(await _resolve_mulerun_image_reference(url))
+            requested_count = req.image_count or req.batch_count or 1
+            result = await _provider_call(
+                "mulerun_image",
+                "generate_image",
+                lambda: svc.generate_image(
+                    prompt=prompt,
+                    model=req.model,
+                    width=image_width,
+                    height=image_height,
+                    aspect_ratio=req.aspect_ratio,
+                    image_quality=req.image_quality,
+                    image_count=requested_count,
+                    output_format=req.output_format or "png",
+                    reference_images=ref_urls if ref_urls else None,
+                    enable_web_search=req.enable_web_search,
+                ),
+            )
         else:
             raise Exception(f"不支持的图片服务商: {req.provider}")
 
@@ -1217,6 +1310,9 @@ async def list_image_models(request: Request):
     models.extend(get_image_model_specs())
     models.extend(GEMINI_IMAGE_MODELS)
     models.extend(OPENAI_IMAGE_MODELS)
+    if _can_use_mulerun_image(request) and _mulerun_image():
+        from mulerun_service import MULERUN_IMAGE_MODELS
+        models.extend(MULERUN_IMAGE_MODELS)
     return {"models": models}
 
 

@@ -75,6 +75,7 @@ API_USAGE_GROUPS = [
     {"id": "hr_admin_ssc", "label": "人力行政SSC组", "department": "人力资源部", "team": "行政SSC组"},
     {"id": "unassigned_zhitou", "label": "未分部门直投组", "department": "未分部门", "team": "直投组"},
     {"id": "unassigned", "label": "未分部门未分团队", "department": "未分部门", "team": "未分团队"},
+    {"id": "admin_test", "label": "Admin Test", "department": "Admin", "team": "Test"},
 ]
 _API_USAGE_GROUP_IDS = {item["id"] for item in API_USAGE_GROUPS}
 
@@ -165,6 +166,9 @@ def current_api_usage_group() -> str:
     department, team_group = _split_department_and_team(team)
     if not department:
         department = (full.get("department") or user.get("department") or "").strip()
+    role = str(user.get("role") or full.get("role") or "").strip().lower()
+    if role == "admin" and (not team_group or team_group.lower() == "test") and (not department or department.lower() == "admin"):
+        return "admin_test"
     return _group_from_department_team(department, team_group)
 
 

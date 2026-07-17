@@ -1,6 +1,6 @@
 import { ImageIcon, Loader2, Pencil, RefreshCw, Sparkles, Upload, X } from 'lucide-react'
 import { AI_MODELS, IMAGE_ASPECT_OPTIONS, IMAGE_QUALITY_OPTIONS } from '../gameVideoConstants'
-import { mediaUrl } from '../gameVideoPageHelpers'
+import { copyTextToClipboard, mediaUrl } from '../gameVideoPageHelpers'
 import { imageAspectStyleValue } from '../gameVideoModelUtils'
 
 export default function ImageGenerationPanel({
@@ -41,8 +41,14 @@ export default function ImageGenerationPanel({
 }) {
   if (!active) return null
 
-  const copyPrompt = (text) => {
-    void navigator.clipboard.writeText(text || '')
+  const copyPrompt = async (text) => {
+    const value = String(text || prompt || '').trim()
+    if (!value) {
+      alert('这张图没有记录提示词。')
+      return
+    }
+    const copied = await copyTextToClipboard(value)
+    if (!copied) alert('复制失败，请手动选中提示词复制。')
   }
 
   const editPresets = [
@@ -56,6 +62,7 @@ export default function ImageGenerationPanel({
   const hasGeneratedEditReference = refImages.some(img => img?.source === 'generated')
   const editMode = rawEditMode && hasGeneratedEditReference
   const generatedEditMode = editMode
+  const showQualityControl = !(Array.isArray(qualityIds) && qualityIds.length === 1 && qualityIds[0] === 'low')
 
   const applyEditPreset = (text) => {
     if (!hasGeneratedEditReference) return
@@ -107,7 +114,7 @@ export default function ImageGenerationPanel({
             </div>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+          <div style={{ display: showQualityControl ? 'flex' : 'none', alignItems: 'center', gap: 8, marginBottom: 10 }}>
             <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>清晰度</span>
             <select
               value={quality}

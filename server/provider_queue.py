@@ -19,6 +19,7 @@ PROVIDER_ALIASES = {
     "happyhorse": "dashscope",
     "wan": "dashscope",
     "gemini_image": "gemini",
+    "mulerun_image": "openai",
 }
 
 PROVIDER_LABELS = {

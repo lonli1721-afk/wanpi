@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 """OpenAI-compatible service for GPT models."""
 
@@ -28,10 +28,33 @@ OPENAI_IMAGE_MODELS = [
         "provider": "openai_image",
         "supports_ref_images": True,
         "max_ref_images": 4,
-        "supported_qualities": ["2K"],
+        "supports_edit": True,
+        "supports_batch": True,
+        "max_batch_count": 4,
+        "supported_counts": [1, 2, 3, 4],
+        "default_count": 1,
+        "supported_qualities": ["1K", "2K"],
         "default_quality": "2K",
     },
 ]
+
+_OPENAI_IMAGE_SIZES_BY_QUALITY = {
+    "1K": {
+        "1:1": "1024x1024",
+        "16:9": "1280x720",
+        "9:16": "720x1280",
+        "4:3": "1152x864",
+        "3:4": "864x1152",
+    },
+    "2K": {
+        "1:1": "2048x2048",
+        "16:9": "2048x1152",
+        "9:16": "1152x2048",
+        "4:3": "1920x1440",
+        "3:4": "1440x1920",
+    },
+
+}
 
 _NEW_API_MODELS = frozenset({
     "gpt-5.5", "gpt-5.5-mini", "gpt-5.5-nano",
@@ -180,20 +203,49 @@ class OpenAIService:
         return data["choices"][0]["message"]["content"]
 
     @staticmethod
-    def _normalize_image_size(size: str) -> str:
-        """Map the app's common ratios to OpenAI image sizes."""
+    def _image_aspect_key(width: int, height: int) -> str:
+        if width <= 0 or height <= 0:
+            return "1:1"
+        ratio = width / height
+        candidates = {
+            "1:1": 1,
+            "16:9": 16 / 9,
+            "9:16": 9 / 16,
+            "4:3": 4 / 3,
+            "3:4": 3 / 4,
+        }
+        return min(candidates, key=lambda key: abs(ratio - candidates[key]))
+
+    @staticmethod
+    def _normalize_image_size(size: str, image_quality: str = "2K") -> str:
+        """Map the app's selected ratio + quality to the image endpoint size."""
         text = str(size or "").lower().strip()
-        if text in {"1024x1024", "1536x1024", "1024x1536"}:
+        quality = str(image_quality or "2K").upper()
+        sizes = _OPENAI_IMAGE_SIZES_BY_QUALITY.get(quality) or _OPENAI_IMAGE_SIZES_BY_QUALITY["2K"]
+        if text in set(sizes.values()):
             return text
         try:
             width_text, height_text = text.split("x", 1)
             width = int(width_text)
             height = int(height_text)
         except Exception:
-            return "1024x1024"
-        if width == height:
-            return "1024x1024"
-        return "1536x1024" if width > height else "1024x1536"
+            width, height = 1024, 1024
+        return sizes.get(OpenAIService._image_aspect_key(width, height), sizes["1:1"])
+
+    @staticmethod
+    def _normalize_image_count(value: int | str | None) -> int:
+        try:
+            count = int(value or 1)
+        except (TypeError, ValueError):
+            count = 1
+        return max(1, min(4, count))
+
+    @staticmethod
+    def _image_result(images: list[dict], warning: str = "") -> dict:
+        result = {"image_url": images[0].get("url", ""), "images": images}
+        if warning:
+            result["warning"] = warning
+        return result
 
     async def generate_image(
         self,
@@ -201,65 +253,84 @@ class OpenAIService:
         model: str = "gpt-image-2",
         size: str = "1024x1024",
         reference_images: list[tuple[bytes, str, str]] | None = None,
+        image_quality: str = "2K",
+        image_count: int = 1,
     ) -> dict:
         """Generate or edit an image through OpenAI-compatible image endpoints."""
         refs = list(reference_images or [])
+        count = self._normalize_image_count(image_count)
         if refs:
             return await self.edit_image(
                 prompt=prompt,
                 model=model,
                 size=size,
                 reference_images=refs,
+                image_quality=image_quality,
+                image_count=count,
             )
 
         body = {
             "model": model,
             "prompt": prompt,
-            "size": self._normalize_image_size(size),
+            "size": self._normalize_image_size(size, image_quality),
             "n": 1,
         }
+        all_images = []
         last_error: Exception | None = None
-        for attempt in range(4):
-            try:
-                async with httpx.AsyncClient(timeout=300) as client:
-                    resp = await client.post(
-                        f"{self.base_url}/images/generations",
-                        headers={
-                            "Authorization": f"Bearer {self.api_key}",
-                            "Content-Type": "application/json",
-                        },
-                        json=body,
-                    )
-                    resp.raise_for_status()
-                    data = resp.json()
-                    images = []
-                    for item in data.get("data", []) or []:
-                        if item.get("b64_json"):
-                            images.append({"data": item["b64_json"], "mime_type": "image/png"})
-                        elif item.get("url"):
-                            images.append({"url": item["url"]})
-                    if not images:
-                        raise Exception("OpenAI 图片通道没有返回图片，请稍后重试或切换模型。")
-                    return {"image_url": images[0].get("url", ""), "images": images}
-            except httpx.HTTPStatusError as exc:
-                last_error = exc
-                status = exc.response.status_code
-                if status in (429, 502, 503, 504) and attempt < 3:
-                    await asyncio.sleep(min(12.0, 2.0 * (2 ** attempt)) + random.uniform(0, 0.8))
-                    continue
-                if status == 400:
-                    preview = (exc.response.text or "").strip()[:500] or "empty response"
-                    raise Exception(
-                        "OpenAI 图片接口返回 400，通常是模型名或参数不被代理支持："
-                        f"{preview}"
-                    )
-                raise Exception(self._friendly_error(exc))
-            except Exception as exc:
-                last_error = exc
-                if attempt < 3:
-                    await asyncio.sleep(min(8.0, 1.5 * (2 ** attempt)) + random.uniform(0, 0.5))
-                    continue
-                raise Exception(self._friendly_error(exc))
+        async with httpx.AsyncClient(timeout=300) as client:
+            for _ in range(count):
+                for attempt in range(4):
+                    try:
+                        resp = await client.post(
+                            f"{self.base_url}/images/generations",
+                            headers={
+                                "Authorization": f"Bearer {self.api_key}",
+                                "Content-Type": "application/json",
+                            },
+                            json=body,
+                        )
+                        resp.raise_for_status()
+                        data = resp.json()
+                        images = []
+                        for item in data.get("data", []) or []:
+                            if item.get("b64_json"):
+                                images.append({"data": item["b64_json"], "mime_type": "image/png"})
+                            elif item.get("url"):
+                                images.append({"url": item["url"]})
+                        if not images:
+                            raise Exception("OpenAI 图片通道没有返回图片，请稍后重试或切换模型。")
+                        all_images.extend(images[:1])
+                        break
+                    except httpx.HTTPStatusError as exc:
+                        last_error = exc
+                        status = exc.response.status_code
+                        if status in (429, 502, 503, 504) and attempt < 3:
+                            await asyncio.sleep(min(12.0, 2.0 * (2 ** attempt)) + random.uniform(0, 0.8))
+                            continue
+                        if status == 400:
+                            preview = (exc.response.text or "").strip()[:500] or "empty response"
+                            message = (
+                                "OpenAI 图片接口返回 400，通常是模型名或参数不被代理支持："
+                                f"{preview}"
+                            )
+                            if all_images:
+                                return self._image_result(all_images, f"已生成 {len(all_images)}/{count} 张，后续请求失败：{message}")
+                            raise Exception(message)
+                        message = self._friendly_error(exc)
+                        if all_images:
+                            return self._image_result(all_images, f"已生成 {len(all_images)}/{count} 张，后续请求失败：{message}")
+                        raise Exception(message)
+                    except Exception as exc:
+                        last_error = exc
+                        if attempt < 3:
+                            await asyncio.sleep(min(8.0, 1.5 * (2 ** attempt)) + random.uniform(0, 0.5))
+                            continue
+                        message = self._friendly_error(exc)
+                        if all_images:
+                            return self._image_result(all_images, f"已生成 {len(all_images)}/{count} 张，后续请求失败：{message}")
+                        raise Exception(message)
+        if all_images:
+            return self._image_result(all_images)
         raise Exception(self._friendly_error(last_error or Exception("OpenAI 图片请求失败")))
 
     async def edit_image(
@@ -268,65 +339,89 @@ class OpenAIService:
         model: str = "gpt-image-2",
         size: str = "1024x1024",
         reference_images: list[tuple[bytes, str, str]] | None = None,
+        image_quality: str = "2K",
+        image_count: int = 1,
     ) -> dict:
         """Edit/generate from reference images through the OpenAI-compatible edits endpoint."""
         refs = list(reference_images or [])
         if not refs:
-            return await self.generate_image(prompt=prompt, model=model, size=size)
+            return await self.generate_image(
+                prompt=prompt,
+                model=model,
+                size=size,
+                image_quality=image_quality,
+                image_count=image_count,
+            )
 
+        count = self._normalize_image_count(image_count)
         data = {
             "model": model,
             "prompt": prompt,
-            "size": self._normalize_image_size(size),
+            "size": self._normalize_image_size(size, image_quality),
             "n": "1",
         }
         files = []
+        image_field_name = "image[]" if len(refs[:4]) > 1 else "image"
         for index, (image_bytes, mime, filename) in enumerate(refs[:4], start=1):
             safe_name = filename or f"reference_{index}.png"
             if "." not in safe_name:
                 safe_name = f"{safe_name}.png"
-            files.append(("image", (safe_name, image_bytes, mime or "image/png")))
+            files.append((image_field_name, (safe_name, image_bytes, mime or "image/png")))
 
+        all_images = []
         last_error: Exception | None = None
-        for attempt in range(4):
-            try:
-                async with httpx.AsyncClient(timeout=300) as client:
-                    resp = await client.post(
-                        f"{self.base_url}/images/edits",
-                        headers={"Authorization": f"Bearer {self.api_key}"},
-                        data=data,
-                        files=files,
-                    )
-                    resp.raise_for_status()
-                    payload = resp.json()
-                    images = []
-                    for item in payload.get("data", []) or []:
-                        if item.get("b64_json"):
-                            images.append({"data": item["b64_json"], "mime_type": "image/png"})
-                        elif item.get("url"):
-                            images.append({"url": item["url"]})
-                    if not images:
-                        raise Exception("OpenAI 图生图通道没有返回图片，请稍后重试或切换模型。")
-                    return {"image_url": images[0].get("url", ""), "images": images}
-            except httpx.HTTPStatusError as exc:
-                last_error = exc
-                status = exc.response.status_code
-                if status in (429, 502, 503, 504) and attempt < 3:
-                    await asyncio.sleep(min(12.0, 2.0 * (2 ** attempt)) + random.uniform(0, 0.8))
-                    continue
-                if status in (400, 404, 405):
-                    preview = (exc.response.text or "").strip()[:500] or "empty response"
-                    raise Exception(
-                        "OpenAI 图生图接口调用失败，通常是代理未开放 /images/edits、模型名不支持编辑接口，"
-                        f"或参考图格式不被接受：{preview}"
-                    )
-                raise Exception(self._friendly_error(exc))
-            except Exception as exc:
-                last_error = exc
-                if attempt < 3:
-                    await asyncio.sleep(min(8.0, 1.5 * (2 ** attempt)) + random.uniform(0, 0.5))
-                    continue
-                raise Exception(self._friendly_error(exc))
+        async with httpx.AsyncClient(timeout=300) as client:
+            for _ in range(count):
+                for attempt in range(4):
+                    try:
+                        resp = await client.post(
+                            f"{self.base_url}/images/edits",
+                            headers={"Authorization": f"Bearer {self.api_key}"},
+                            data=data,
+                            files=files,
+                        )
+                        resp.raise_for_status()
+                        payload = resp.json()
+                        images = []
+                        for item in payload.get("data", []) or []:
+                            if item.get("b64_json"):
+                                images.append({"data": item["b64_json"], "mime_type": "image/png"})
+                            elif item.get("url"):
+                                images.append({"url": item["url"]})
+                        if not images:
+                            raise Exception("OpenAI 图生图通道没有返回图片，请稍后重试或切换模型。")
+                        all_images.extend(images[:1])
+                        break
+                    except httpx.HTTPStatusError as exc:
+                        last_error = exc
+                        status = exc.response.status_code
+                        if status in (429, 502, 503, 504) and attempt < 3:
+                            await asyncio.sleep(min(12.0, 2.0 * (2 ** attempt)) + random.uniform(0, 0.8))
+                            continue
+                        if status in (400, 404, 405):
+                            preview = (exc.response.text or "").strip()[:500] or "empty response"
+                            message = (
+                                "OpenAI 图生图接口调用失败，通常是代理未开放 /images/edits、模型名不支持编辑接口，"
+                                f"或参考图格式不被接受：{preview}"
+                            )
+                            if all_images:
+                                return self._image_result(all_images, f"已生成 {len(all_images)}/{count} 张，后续请求失败：{message}")
+                            raise Exception(message)
+                        message = self._friendly_error(exc)
+                        if all_images:
+                            return self._image_result(all_images, f"已生成 {len(all_images)}/{count} 张，后续请求失败：{message}")
+                        raise Exception(message)
+                    except Exception as exc:
+                        last_error = exc
+                        if attempt < 3:
+                            await asyncio.sleep(min(8.0, 1.5 * (2 ** attempt)) + random.uniform(0, 0.5))
+                            continue
+                        message = self._friendly_error(exc)
+                        if all_images:
+                            return self._image_result(all_images, f"已生成 {len(all_images)}/{count} 张，后续请求失败：{message}")
+                        raise Exception(message)
+        if all_images:
+            return self._image_result(all_images)
         raise Exception(self._friendly_error(last_error or Exception("OpenAI 图生图请求失败")))
 
     async def chat_stream(

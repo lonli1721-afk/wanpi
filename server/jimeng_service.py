@@ -152,6 +152,7 @@ VIDEO_MODELS = {
     "seedance-2.0":      "doubao-seedance-2-0-260128",
     "seedance-2.0-fast": "doubao-seedance-2-0-fast-260128",
     "seedance-1.0-pro-fast": "doubao-seedance-1-0-pro-fast-251015",
+    "seedance-1.0-fast": "doubao-seedance-1-0-pro-fast-251015",
     "seedance-fast":     "doubao-seedance-1-0-pro-fast-251015",
 }
 
@@ -510,6 +511,7 @@ class JimengService:
         "seedance-2.0-fast": (4, 10),
         "seedance-1.5-pro": (4, 10),
         "seedance-1.0-pro-fast": (4, 10),
+        "seedance-1.0-fast": (4, 10),
         "seedance-fast": (4, 10),
     }
 

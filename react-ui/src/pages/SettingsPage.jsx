@@ -161,6 +161,8 @@ const GROUP_API_FIELDS = [
 ]
 
 const DEPARTMENT_API_FIELDS = [
+  { suffix: 'mulerun_api_base_url', label: 'MuleRun API Base URL (cli2api)', placeholder: '例如：http://127.0.0.1:8080/v1', desc: '用于 GPT Image 2（MuleRun）和 Nano Banana 2（MuleRun）的 cli2api OpenAI 兼容地址。', link: 'cli2api 文档', url: 'https://cli2api.aat.ee/en/docs/', isUrl: true },
+  { suffix: 'mulerun_api_key', label: 'MuleRun API Key (cli2api)', placeholder: '输入当前分组的 MuleRun API Key ...', desc: '用于当前分组调用 GPT Image 2（MuleRun）和 Nano Banana 2（MuleRun）。', link: 'cli2api 文档', url: 'https://cli2api.aat.ee/en/docs/' },
   { suffix: 'api_proxy_url', label: 'API 代理服务器地址', placeholder: '输入 API 代理服务器地址 ...', desc: '国内访问 OpenAI/Gemini 等海外API的代理地址（如 http://47.91.31.32）。设置后自动路由海外API请求。', link: '配置说明', url: '#', isUrl: true },
   { suffix: 'openai_base_url', label: 'OpenAI Base URL（自定义地址）', placeholder: '输入 OpenAI Base URL（自定义地址） ...', desc: '自定义 OpenAI API 地址。已配置代理服务器时无需填写。', link: '默认地址', url: '#', isUrl: true },
   { suffix: 'nanobanana_base_url', label: 'NanoBanana API 根地址（可选）', placeholder: '输入 NanoBanana API 根地址（可选） ...', desc: '留空时优先连接 grsai.dakka.com.cn，失败则自动切换 grsaiapi.com。若需固定节点可填写完整根地址（无末尾斜杠）。', link: '说明', url: 'https://grsai.dakka.com.cn', isUrl: true },
@@ -172,21 +174,11 @@ const DEPARTMENT_API_FIELDS = [
   { suffix: 'nanobanana_pro_api_key', label: 'NanoBanana Pro API Key', placeholder: '输入 NanoBanana Pro API Key ...', desc: 'NanoBanana Pro 图像生成。前往', link: 'NanoBanana', url: 'https://grsai.dakka.com.cn' },
 ]
 
-const MULERUN_STUDIO_FIELDS = [
-  { suffix: 'mulerun_studio_enabled', label: 'MuleRun Studio Enabled', placeholder: 'true / false', desc: 'Enable local MuleRun Studio for GPT Image 2. Each group must configure its own MuleRun Token below.', link: 'MuleRun Studio', url: 'https://mulerun.com/docs/cli/commands/studio', isUrl: true, plainText: true },
-  { suffix: 'mulerun_cli_path', label: 'MuleRun CLI Path', placeholder: 'mulerun', desc: 'Optional. Use mulerun from PATH by default, or fill a full mulerun.cmd path on Windows.', link: 'MuleRun Studio', url: 'https://mulerun.com/docs/cli/commands/studio', isUrl: true, plainText: true },
-  { suffix: 'mulerun_gpt_image_endpoint', label: 'MuleRun GPT Image Endpoint', placeholder: 'openai/gpt-image-2/generation', desc: 'Studio endpoint for GPT Image 2 text-to-image generation.', link: 'MuleRun Studio', url: 'https://mulerun.com/docs/cli/commands/studio', isUrl: true, plainText: true },
-  { suffix: 'mulerun_gpt_image_edit_endpoint', label: 'MuleRun GPT Image Edit Endpoint', placeholder: 'openai/gpt-image-2/edit', desc: 'Studio endpoint for GPT Image 2 reference-image editing.', link: 'MuleRun Studio', url: 'https://mulerun.com/docs/cli/commands/studio', isUrl: true, plainText: true },
-  { suffix: 'mulerun_max_wait_seconds', label: 'MuleRun Max Wait Seconds', placeholder: '900', desc: 'Maximum Studio wait time for one image task.', link: 'MuleRun Studio', url: 'https://mulerun.com/docs/cli/commands/studio', isUrl: true, plainText: true },
-]
-
 const COMMON_API_ADDRESS_FIELDS = [
   ...DEPARTMENT_API_FIELDS.filter(field => field.isUrl),
-  ...MULERUN_STUDIO_FIELDS,
 ]
 const DEPARTMENT_KEY_FIELDS = [
   ...DEPARTMENT_API_FIELDS.filter(field => !field.isUrl),
-  { suffix: 'mulerun_token', label: 'MuleRun Token', placeholder: 'Current group MuleRun token', desc: 'Used by GPT Image 2 through MuleRun Studio. This token is isolated per group and will not fall back to local mulerun login.', link: 'MuleRun Studio', url: 'https://mulerun.com/docs/cli/commands/studio' },
 ]
 
 function groupApiTheme(groupId) {
@@ -208,6 +200,9 @@ function groupApiTheme(groupId) {
 }
 
 function groupFieldMeta(suffix) {
+  if (suffix.includes('mulerun')) {
+    return { icon: Key, color: '#7c3aed', bg: 'rgba(124,58,237,0.08)', border: 'rgba(124,58,237,0.18)', tag: 'MuleRun' }
+  }
   if (suffix.includes('proxy') || suffix.includes('base_url')) {
     return { icon: Cloud, color: '#0ea5e9', bg: 'rgba(14,165,233,0.08)', border: 'rgba(14,165,233,0.18)', tag: '地址' }
   }
@@ -1360,6 +1355,8 @@ function UsagePanel({ isAdmin }) {
   const [endDate, setEndDate] = useState(defaultEndDate)
   const [selectedDepartment, setSelectedDepartment] = useState('')
   const [selectedGroup, setSelectedGroup] = useState('')
+  const [dailySort, setDailySort] = useState({ key: 'date', direction: 'desc' })
+  const [userSort, setUserSort] = useState({ key: 'estimated_video_cost_cny', direction: 'desc' })
 
   const loadUsage = useCallback(async (forceRefresh = false) => {
     setLoading(true)
@@ -1412,6 +1409,77 @@ function UsagePanel({ isAdmin }) {
     other: '其他',
   }[value] || value || '-')
 
+  const textCollator = new Intl.Collator('zh-Hans-CN', { numeric: true, sensitivity: 'base' })
+  const normalizeNumber = (value) => {
+    const num = Number(value ?? 0)
+    return Number.isFinite(num) ? num : 0
+  }
+  const compareValues = (left, right, type = 'number') => {
+    if (type === 'text' || type === 'date') {
+      return textCollator.compare(String(left ?? '').trim(), String(right ?? '').trim())
+    }
+    return normalizeNumber(left) - normalizeNumber(right)
+  }
+  const sortRows = (rows, columns, sort) => {
+    const column = columns.find((item) => item.key === sort.key)
+    if (!column) return rows
+    const direction = sort.direction === 'asc' ? 1 : -1
+    return [...rows]
+      .map((row, index) => ({ row, index }))
+      .sort((left, right) => {
+        const leftValue = column.get ? column.get(left.row) : left.row?.[column.key]
+        const rightValue = column.get ? column.get(right.row) : right.row?.[column.key]
+        const result = compareValues(leftValue, rightValue, column.type)
+        return result === 0 ? left.index - right.index : result * direction
+      })
+      .map((item) => item.row)
+  }
+  const toggleSort = (setter, column) => {
+    setter((current) => (
+      current.key === column.key
+        ? { key: column.key, direction: current.direction === 'desc' ? 'asc' : 'desc' }
+        : { key: column.key, direction: column.defaultDirection || (column.type === 'text' ? 'asc' : 'desc') }
+    ))
+  }
+  const sortHeaderStyle = {
+    appearance: 'none',
+    WebkitAppearance: 'none',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    gap: 3,
+    minWidth: 0,
+    width: '100%',
+    padding: 0,
+    border: 0,
+    background: 'transparent',
+    color: 'inherit',
+    font: 'inherit',
+    fontWeight: 'inherit',
+    lineHeight: 1.3,
+    textAlign: 'left',
+    cursor: 'pointer',
+  }
+  const renderSortHeader = (column, sort, setter) => {
+    const active = sort.key === column.key
+    const Icon = sort.direction === 'asc' ? ChevronUp : ChevronDown
+    return (
+      <button
+        key={column.key}
+        type="button"
+        onClick={() => toggleSort(setter, column)}
+        title={`按${column.label}排序`}
+        style={{
+          ...sortHeaderStyle,
+          color: active ? 'var(--accent)' : 'inherit',
+        }}
+      >
+        <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{column.label}</span>
+        {active ? <Icon size={12} /> : <ChevronDown size={12} style={{ opacity: 0.3 }} />}
+      </button>
+    )
+  }
+
   const totals = usage?.totals || {}
   const users = usage?.users || (usage?.user ? [usage.user] : [])
   const departments = usage?.departments || []
@@ -1459,6 +1527,30 @@ function UsagePanel({ isAdmin }) {
   })
   const dailyRows = Array.isArray(usage?.daily) ? usage.daily : []
   const dailyGridColumns = '1.25fr repeat(7, 0.75fr) 1fr 1fr'
+  const userGridColumns = '1.3fr 1.3fr 1.45fr repeat(8, 0.58fr) 0.78fr'
+  const metricColumns = [
+    { key: 'project_count', label: '项目' },
+    { key: 'task_count', label: '任务' },
+    { key: 'completed_task_count', label: '完成' },
+    { key: 'failed_task_count', label: '失败' },
+    { key: 'image_file_count', label: '图片' },
+    { key: 'video_file_count', label: '视频' },
+    { key: 'video_generation_count', label: '生成视频' },
+    { key: 'estimated_video_cost_cny', label: '费用' },
+    { key: 'storage_bytes', label: '存储' },
+  ]
+  const dailyColumns = [
+    { key: 'date', label: '日期', type: 'date', defaultDirection: 'desc' },
+    ...metricColumns,
+  ]
+  const userColumns = [
+    { key: 'display_name', label: '用户', type: 'text', get: (user) => user.display_name || user.username },
+    { key: 'department', label: '部门', type: 'text' },
+    { key: 'team_group', label: '团队/组', type: 'text', get: (user) => user.team_group || user.team },
+    ...metricColumns,
+  ]
+  const sortedDailyRows = sortRows(dailyRows, dailyColumns, dailySort)
+  const sortedUsers = sortRows(users, userColumns, userSort)
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
@@ -1547,7 +1639,7 @@ function UsagePanel({ isAdmin }) {
           </div>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: dailyGridColumns, gap: 8, padding: '9px 12px', fontSize: 11, color: 'var(--text-muted)', borderBottom: '1px solid var(--border)', fontWeight: 600 }}>
-          <span>日期</span><span>项目</span><span>任务</span><span>完成</span><span>失败</span><span>图片</span><span>视频</span><span>生成视频</span><span>费用</span><span>存储</span>
+          {dailyColumns.map((column) => renderSortHeader(column, dailySort, setDailySort))}
         </div>
         {loading ? (
           <div style={{ padding: 18, fontSize: 12, color: 'var(--text-muted)' }}>正在读取每日数据...</div>
@@ -1555,7 +1647,7 @@ function UsagePanel({ isAdmin }) {
           <div style={{ padding: 18, fontSize: 12, color: 'var(--text-muted)' }}>暂无每日数据</div>
         ) : (
           <>
-            {dailyRows.map((day) => (
+            {sortedDailyRows.map((day) => (
               <div key={day.date} style={{ display: 'grid', gridTemplateColumns: dailyGridColumns, gap: 8, padding: '10px 12px', fontSize: 12, borderTop: '1px solid var(--border)', alignItems: 'center' }}>
                 <span style={{ fontWeight: 600 }}>{day.date}</span>
                 <span>{day.project_count || 0}</span>
@@ -1613,15 +1705,15 @@ function UsagePanel({ isAdmin }) {
       </div>
 
       <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1.3fr 1.45fr repeat(8, 0.58fr) 0.78fr', gap: 8, padding: '9px 12px', fontSize: 11, color: 'var(--text-muted)', borderBottom: '1px solid var(--border)', fontWeight: 600 }}>
-          <span>用户</span><span>部门</span><span>团队/组</span><span>项目</span><span>任务</span><span>完成</span><span>失败</span><span>图片</span><span>视频</span><span>生成视频</span><span>费用</span><span>存储</span>
+        <div style={{ display: 'grid', gridTemplateColumns: userGridColumns, gap: 8, padding: '9px 12px', fontSize: 11, color: 'var(--text-muted)', borderBottom: '1px solid var(--border)', fontWeight: 600 }}>
+          {userColumns.map((column) => renderSortHeader(column, userSort, setUserSort))}
         </div>
         {loading ? (
           <div style={{ padding: 18, fontSize: 12, color: 'var(--text-muted)' }}>正在读取...</div>
         ) : users.length === 0 ? (
           <div style={{ padding: 18, fontSize: 12, color: 'var(--text-muted)' }}>暂无数据</div>
-        ) : users.map(user => (
-          <div key={user.id} style={{ display: 'grid', gridTemplateColumns: '1.3fr 1.3fr 1.45fr repeat(8, 0.58fr) 0.78fr', gap: 8, padding: '10px 12px', fontSize: 12, borderTop: '1px solid var(--border)', alignItems: 'center' }}>
+        ) : sortedUsers.map(user => (
+          <div key={user.id} style={{ display: 'grid', gridTemplateColumns: userGridColumns, gap: 8, padding: '10px 12px', fontSize: 12, borderTop: '1px solid var(--border)', alignItems: 'center' }}>
             <div style={{ minWidth: 0, whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.35 }}>
               <div>
                 {user.display_name || user.username}
@@ -1646,7 +1738,7 @@ function UsagePanel({ isAdmin }) {
           </div>
         ))}
         {!loading && users.length > 0 && (
-          <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1.3fr 1.45fr repeat(8, 0.58fr) 0.78fr', gap: 8, padding: '10px 12px', fontSize: 12, borderTop: '1px solid var(--border)', alignItems: 'center', fontWeight: 700, background: 'var(--bg-primary)' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: userGridColumns, gap: 8, padding: '10px 12px', fontSize: 12, borderTop: '1px solid var(--border)', alignItems: 'center', fontWeight: 700, background: 'var(--bg-primary)' }}>
             <span>总计（{users.length} 人）</span>
             <span>-</span>
             <span>-</span>

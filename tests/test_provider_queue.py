@@ -36,15 +36,17 @@ class ProviderQueueTests(unittest.TestCase):
             happyhorse = provider_queue.get_provider_limiter("happyhorse")
             wan = provider_queue.get_provider_limiter("wan")
             gemini_image = provider_queue.get_provider_limiter("gemini_image")
-            return jimeng, seedance, happyhorse, wan, gemini_image
+            mulerun_image = provider_queue.get_provider_limiter("mulerun_image")
+            return jimeng, seedance, happyhorse, wan, gemini_image, mulerun_image
 
-        jimeng, seedance, happyhorse, wan, gemini_image = asyncio.run(scenario())
+        jimeng, seedance, happyhorse, wan, gemini_image, mulerun_image = asyncio.run(scenario())
 
         self.assertIs(jimeng, seedance)
         self.assertEqual(jimeng.provider_key, "ark")
         self.assertIs(happyhorse, wan)
         self.assertEqual(happyhorse.provider_key, "dashscope")
         self.assertEqual(gemini_image.provider_key, "gemini")
+        self.assertEqual(mulerun_image.provider_key, "openai")
 
     def test_env_limit_is_applied_and_clamped(self):
         os.environ["GAME_PROVIDER_DEFAULT_CONCURRENCY"] = "0"

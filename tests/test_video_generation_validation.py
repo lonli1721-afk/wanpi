@@ -58,7 +58,8 @@ class VideoGenerationValidationTests(unittest.TestCase):
         self.assertEqual(result.mode, "generate")
 
     def test_ref_image_and_ref_video_support_is_enforced(self):
-        self.assert_invalid("不支持参考图", model="seedance-1.5-pro", character_refs=["/api/files/a.png"])
+        result = _valid(model="seedance-1.5-pro", duration=4, character_refs=["/api/files/a.png"])
+        self.assertEqual(result.mode, "generate")
         self.assert_invalid("不支持参考视频", model="seedance-1.5-pro", reference_video_url="/api/files/a.mp4")
         self.assert_invalid(
             "不支持参考视频",

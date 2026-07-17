@@ -39,6 +39,7 @@ export const VIDEO_RESOLUTION_OPTIONS = [
 ]
 
 export const IMAGE_QUALITY_OPTIONS = [
+  { id: 'low', label: '低' },
   { id: '1K', label: '1K 基础' },
   { id: '2K', label: '2K 标准' },
   { id: '4K', label: '4K 超清' },
@@ -140,7 +141,7 @@ export const FALLBACK_VIDEO_MODELS = [
   },
   {
     id: 'seedance-1.0-pro-fast',
-    name: 'seedance-1.0-pro-fast',
+    name: 'Seedance 1.0 Fast',
     provider: 'jimeng',
     supports_ref_video: false,
     supports_ref_images: true,
@@ -149,7 +150,7 @@ export const FALLBACK_VIDEO_MODELS = [
     max_ref_images: 1,
     supported_resolutions: ['720p'],
     default_resolution: '720p',
-    limit_note: 'seedance-1.0-pro-fast: 4-10s, 720P, supports one first-frame image.',
+    limit_note: 'Seedance 1.0 Fast: 4-10s, 720P, supports one first-frame image.',
     supported_modes: ['generate'],
     price_per_second: 0.4,
     price_unit: 'CNY',

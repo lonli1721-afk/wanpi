@@ -140,13 +140,14 @@ SYNC_SETTING_KEYS = [
     "hunyuan_secret_key", "vidu_api_key", "hailuo_api_key",
     "volcengine_tts_key", "fish_audio_api_key", "cosyvoice_base_url",
     "indextts_base_url", "nanobanana_api_key", "nanobanana_base_url", "api_proxy_url",
-    "comfyui_base_url",
+    "mulerun_api_base_url", "comfyui_base_url",
 ]
 GROUP_SYNC_SETTING_SUFFIXES = [
     "ark_api_key", "jimeng_api_key",
     "gemini_api_key", "gemini_api_keys",
     "api_proxy_url",
     "openai_api_key", "openai_base_url",
+    "mulerun_api_key", "mulerun_api_base_url",
     "qwen_api_key",
     "dashscope_api_key", "game_dashscope_api_key",
     "nanobanana_api_key", "nanobanana_pro_api_key", "nanobanana_base_url",
@@ -158,7 +159,7 @@ GROUP_SYNC_SETTING_SUFFIXES = [
 for _group in (
     "fa1", "fa1_hunbian", "fa1_project1", "fa1_project2", "fa1_project3", "fa1_creative", "fa1_baoliang",
     "fa2", "fa2_zhitou", "fa2_wechat", "fa2_tt", "fa2_research", "fa2_unassigned",
-    "fa3", "fa3_baoliang", "market", "market_tt", "hr_admin_ssc", "unassigned_zhitou", "unassigned",
+    "fa3", "fa3_baoliang", "market", "market_tt", "hr_admin_ssc", "unassigned_zhitou", "unassigned", "admin_test",
 ):
     for _suffix in GROUP_SYNC_SETTING_SUFFIXES:
         SYNC_SETTING_KEYS.append(f"group_api_{_group}_{_suffix}")

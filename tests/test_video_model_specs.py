@@ -41,9 +41,16 @@ class VideoModelSpecsTests(unittest.TestCase):
 
         seedance_15 = catalog["seedance-1.5-pro"]
         self.assertFalse(seedance_15["supports_ref_video"])
-        self.assertFalse(seedance_15["supports_ref_images"])
-        self.assertEqual(seedance_15["max_duration"], 10)
+        self.assertTrue(seedance_15["supports_ref_images"])
+        self.assertEqual(seedance_15["max_ref_images"], 2)
+        self.assertEqual(seedance_15["max_duration"], 12)
         self.assertEqual(seedance_15["price_per_second"], 0.3)
+
+        seedance_10_fast = catalog["seedance-1.0-pro-fast"]
+        self.assertEqual(seedance_10_fast["name"], "Seedance 1.0 Fast")
+        self.assertEqual(seedance_10_fast["min_duration"], 4)
+        self.assertEqual(seedance_10_fast["max_duration"], 10)
+        self.assertEqual(seedance_10_fast["supported_resolutions"], ["720p"])
 
         self.assertEqual(catalog["viduq3-pro"]["provider"], "vidu")
         self.assertFalse(catalog["viduq3-pro"]["supports_ref_video"])
@@ -112,6 +119,8 @@ class VideoModelSpecsTests(unittest.TestCase):
                 self.assertEqual(spec["price_unit"], "CNY")
 
         self.assertEqual(video_model_registry.get_video_model_spec("seedance-2.0")["provider"], "jimeng")
+        self.assertEqual(video_model_registry.normalize_video_model_id("seedance-1.0-fast"), "seedance-1.0-pro-fast")
+        self.assertEqual(video_model_registry.get_video_model_spec("seedance-1.0-fast")["id"], "seedance-1.0-pro-fast")
         self.assertEqual(video_model_registry.get_video_model_spec("missing-model"), {})
 
     def test_specs_can_be_filtered_by_provider(self):
